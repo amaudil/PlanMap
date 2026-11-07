@@ -1,0 +1,6 @@
+{
+  "name": "PlanMap - Experiencias Compartidas",
+  "description": "Organiza planes sin fricción, conecta en persona según la vibra del momento, navega el mapa vivo y colecciona postales colectivas de recuerdos inolvidables.",
+  "requestFramePermissions": ["geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
