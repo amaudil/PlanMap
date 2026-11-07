@@ -6,8 +6,10 @@ import { VIBES, INITIAL_PLANS, INITIAL_MEMORIES } from './data/mockData';
 import { downloadPostcardAsImage } from './utils/postcardCanvas';
 
 export default function App() {
-  // Current view: 'view-welcome' | 'view-map' | 'view-create' | 'view-invite' | 'view-memory'
-  const [currentView, setCurrentView] = useState<string>('view-welcome');
+  // Current active view: 'view-welcome' | 'view-map' | 'view-create' | 'view-invite' | 'view-memory'
+  const [currentView, setCurrentView] = useState<string>(() => {
+    return localStorage.getItem('planmap_onboarding_seen') ? 'view-map' : 'view-welcome';
+  });
 
   // Plan state
   const [plans, setPlans] = useState<PlanExperience[]>(INITIAL_PLANS);
@@ -42,7 +44,7 @@ export default function App() {
         maxZoom: 19,
       }).addTo(map);
 
-      // Clean default user location marker with neon styling
+      // Clean default user location marker with neon accent
       const neonIcon = L.divIcon({
         className: 'custom-neon-marker',
         html: `
@@ -59,7 +61,7 @@ export default function App() {
       userMarker.bindPopup(`
         <div style="text-align: center; padding: 2px;">
           <b style="color: #CCFF00; font-size: 13px;">Tú estás aquí ✨</b>
-          <p style="color: #8A9590; font-size: 11px; margin-top: 2px;">PlanMap Vivo Dark Pro</p>
+          <p style="color: #8A9590; font-size: 11px; margin-top: 2px;">PlanMap en Vivo</p>
         </div>
       `).openPopup();
 
@@ -70,7 +72,7 @@ export default function App() {
       if (mapInstanceRef.current) {
         mapInstanceRef.current.invalidateSize();
       }
-    }, 150);
+    }, 300);
 
     return () => clearTimeout(timer);
   }, [currentView]);
@@ -118,8 +120,25 @@ export default function App() {
         if (mapInstanceRef.current) {
           mapInstanceRef.current.invalidateSize();
         }
-      }, 150);
+      }, 300);
     }
+  };
+
+  const completeOnboarding = () => {
+    localStorage.setItem('planmap_onboarding_seen', 'true');
+    switchView('view-map');
+  };
+
+  const goToCreatePlan = () => {
+    switchView('view-create');
+  };
+
+  const goToMemory = () => {
+    switchView('view-memory');
+  };
+
+  const selectVibe = (vibe: Vibe) => {
+    setSelectedVibe(vibe);
   };
 
   const generateInvite = () => {
@@ -242,59 +261,59 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-[#030404] flex items-center justify-center p-0 md:p-4 select-none">
+    <div className="min-h-screen bg-[#030404] flex justify-center items-center overflow-hidden w-full select-none">
       <div
         id="app"
-        className="bg-[#0A0C0B] w-full max-w-[410px] h-screen md:h-[840px] relative overflow-hidden shadow-[0_30px_60px_rgba(0,0,0,0.8)] md:rounded-[44px] flex flex-col border border-white/[0.08]"
+        className="bg-[#0A0C0B] w-full max-w-[410px] h-[100dvh] max-h-[850px] relative overflow-hidden shadow-[0_30px_60px_rgba(0,0,0,0.8)] flex flex-col md:rounded-[44px] md:h-[840px] md:border-2 md:border-white/[0.08]"
       >
         {/* ========================================
-           VISTA 0: BIENVENIDA (PRO UI)
-           ======================================== */}
+             VISTA 0: BIENVENIDA (PRO UI & RESPONSIVE)
+             ======================================== */}
         <div
           id="view-welcome"
-          className={`view absolute inset-0 w-full h-full flex flex-col justify-between p-[28px_22px_36px_22px] bg-gradient-to-b from-[#111513] to-[#0A0C0B] transition-all duration-300 ${
+          className={`view absolute inset-0 w-full h-full flex flex-col justify-between p-[max(24px,env(safe-area-inset-top))_20px_max(24px,env(safe-area-inset-bottom))_20px] bg-gradient-to-b from-[#111513] to-[#0A0C0B] overflow-y-auto transition-all duration-300 ${
             currentView === 'view-welcome' ? 'active' : 'hidden'
           }`}
         >
-          {/* Welcome Hero Card */}
-          <div className="welcome-hero-card w-full h-[340px] bg-[#161A18] rounded-[32px] overflow-hidden relative border border-white/[0.08] shadow-[0_16px_32px_rgba(0,0,0,0.4)]">
-            <img
-              src="https://images.unsplash.com/photo-1517457373958-b7bdd4587205?auto=format&fit=crop&w=800&q=80"
-              alt="PlanMap Hero"
-              className="welcome-hero-img w-full h-full object-cover filter brightness-[0.85] contrast-[1.05]"
-            />
-            <div className="hero-gradient-overlay absolute bottom-0 left-0 w-full h-1/2 bg-gradient-to-t from-[#161A18]/95 to-transparent flex items-end p-5">
-              <span className="text-xs font-mono font-bold tracking-wider text-[#CCFF00] bg-[#0A0C0B]/80 px-2.5 py-1 rounded-full border border-[#CCFF00]/20">
-                LIVE SPATIAL SOCIAL
-              </span>
-            </div>
-          </div>
-
-          {/* Copy section */}
           <div>
-            <h1 className="welcome-title text-[2.1rem] font-extrabold leading-[1.15] tracking-[-0.6px] mt-4 text-white">
-              Conecta en vivo.<br />
-              <span className="text-[#CCFF00]">Arma el plan.</span>
+            <div className="welcome-hero-card w-full h-[300px] min-h-[250px] bg-[#161A18] rounded-[28px] overflow-hidden relative border border-white/[0.08] shadow-[0_16px_32px_rgba(0,0,0,0.4)] shrink-0">
+              <img
+                src="https://images.unsplash.com/photo-1529156069898-49953e39b3ac?auto=format&fit=crop&w=800&q=80"
+                alt="Experiencia compartida"
+                className="welcome-hero-img w-full h-full object-cover filter brightness-[0.85] contrast-[1.05]"
+              />
+              <div className="hero-gradient-overlay absolute bottom-0 left-0 w-full h-1/2 bg-gradient-to-t from-[#161A18]/90 to-transparent"></div>
+            </div>
+            <h1 className="welcome-title text-[clamp(1.8rem,5vw,2.2rem)] font-extrabold leading-[1.15] tracking-[-0.6px] mt-4 text-white">
+              Conecta sin ruido, vive el momento.
             </h1>
-            <p className="welcome-subtitle text-[0.92rem] text-[#8A9590] mt-2.5 leading-[1.5]">
-              Encuentros sin fricción. Mira a tus amigos en camino sobre el mapa en tiempo real y guarda el recuerdo colectivo.
+            <p className="welcome-subtitle text-[0.9rem] text-[#8A9590] mt-2 leading-[1.4]">
+              Organiza planes al instante, reúne a tu gente y conserva recuerdos significativos.
             </p>
           </div>
 
-          {/* Action button */}
-          <div>
+          <div className="mt-5">
             <button
-              className="btn-neon w-full bg-[#CCFF00] hover:bg-[#B5E600] text-[#0A0C0B] p-[18px] rounded-[24px] text-[1.05rem] font-extrabold border-none cursor-pointer text-center shadow-[0_10px_30px_rgba(204,255,0,0.25)] active:scale-[0.97] transition-transform duration-150"
-              onClick={() => switchView('view-map')}
+              className="btn-neon w-full bg-[#CCFF00] hover:bg-[#B5E600] text-[#0A0C0B] p-4 rounded-[22px] text-[1.05rem] font-extrabold border-none cursor-pointer text-center shadow-[0_10px_30px_rgba(204,255,0,0.25)] active:scale-[0.97] transition-transform duration-150"
+              onClick={completeOnboarding}
             >
-              Explorar Mapa en Vivo →
+              Comenzar
             </button>
+            <p className="text-center text-[0.85rem] text-[#8A9590] mt-3">
+              ¿Ya tienes cuenta?{' '}
+              <span
+                className="text-white font-bold cursor-pointer hover:underline"
+                onClick={completeOnboarding}
+              >
+                Iniciar sesión
+              </span>
+            </p>
           </div>
         </div>
 
         {/* ========================================
-           VISTA 1: MAPA VIVO (Dark Pro)
-           ======================================== */}
+             VISTA 1: MAPA VIVO
+             ======================================== */}
         <div
           id="view-map"
           className={`view absolute inset-0 w-full h-full flex flex-col transition-all duration-300 ${
@@ -308,24 +327,24 @@ export default function App() {
             className="dark-leaflet-map absolute inset-0 w-full h-full z-1"
           />
 
-          {/* Header flotante limpio */}
-          <div className="map-overlay-top absolute top-0 left-0 w-full p-6 flex justify-between items-center z-10 pointer-events-none">
-            <div className="brand-pill pointer-events-auto bg-[#161A18]/90 backdrop-blur-md px-4 py-2 rounded-full font-bold text-sm text-white border border-white/[0.08] shadow-lg flex items-center gap-1.5">
+          {/* Header flotante */}
+          <div className="map-overlay-top absolute top-0 left-0 w-full p-[max(20px,env(safe-area-inset-top))_20px_20px_20px] flex justify-between items-center z-10 pointer-events-none">
+            <div className="brand-pill-dark pointer-events-auto bg-[#161A18]/85 backdrop-blur-[16px] px-[18px] py-[10px] rounded-[30px] font-extrabold text-base text-white border border-white/[0.08] shadow-[0_8px_24px_rgba(0,0,0,0.4)] flex items-center gap-1.5">
               <span>PlanMap</span>
-              <span className="text-[#CCFF00]">✨</span>
+              <span className="text-[#CCFF00]">⚡</span>
             </div>
 
             <div className="flex items-center gap-2 pointer-events-auto">
               <button
-                className="icon-btn w-11 h-11 bg-[#161A18]/90 backdrop-blur-md rounded-full flex items-center justify-center text-lg text-white border border-white/[0.08] shadow-lg cursor-pointer hover:bg-[#202623] active:scale-95 transition-all"
+                className="icon-btn-dark w-[46px] h-[46px] bg-[#161A18]/85 backdrop-blur-[16px] rounded-full flex items-center justify-center text-[1.2rem] text-white border border-white/[0.08] shadow-[0_8px_24px_rgba(0,0,0,0.4)] cursor-pointer hover:bg-[#222825] active:scale-95 transition-all"
                 onClick={() => switchView('view-welcome')}
                 title="Ver Bienvenida"
               >
                 🏠
               </button>
               <button
-                className="icon-btn w-11 h-11 bg-[#161A18]/90 backdrop-blur-md rounded-full flex items-center justify-center text-lg text-white border border-white/[0.08] shadow-lg cursor-pointer hover:bg-[#202623] active:scale-95 transition-all"
-                onClick={() => switchView('view-memory')}
+                className="icon-btn-dark w-[46px] h-[46px] bg-[#161A18]/85 backdrop-blur-[16px] rounded-full flex items-center justify-center text-[1.2rem] text-white border border-white/[0.08] shadow-[0_8px_24px_rgba(0,0,0,0.4)] cursor-pointer hover:bg-[#222825] active:scale-95 transition-all"
+                onClick={goToMemory}
                 title="Ver Recuerdos Colectivos"
               >
                 🖼️
@@ -333,14 +352,14 @@ export default function App() {
             </div>
           </div>
 
-          {/* Píldora de acción principal abajo */}
-          <div className="map-overlay-bottom absolute bottom-8 left-0 w-full px-5 z-10 flex flex-col gap-3 pointer-events-none">
+          {/* Píldora inferior flotante */}
+          <div className="map-overlay-bottom absolute bottom-[max(25px,env(safe-area-inset-bottom))] left-0 w-full px-5 z-10 pointer-events-none">
             <div
-              className="action-pill pointer-events-auto bg-[#161A18]/95 hover:bg-[#202623] border border-white/[0.1] text-white rounded-full py-4 px-6 flex justify-between items-center cursor-pointer shadow-[0_12px_32px_rgba(0,0,0,0.8)] active:scale-[0.98] transition-all"
-              onClick={() => switchView('view-create')}
+              className="action-pill-neon pointer-events-auto bg-[#CCFF00] hover:bg-[#B5E600] text-[#0A0C0B] rounded-[32px] p-[16px_22px] flex justify-between items-center cursor-pointer shadow-[0_14px_35px_rgba(204,255,0,0.35)] font-extrabold text-[1.05rem] active:scale-[0.97] transition-transform duration-150"
+              onClick={goToCreatePlan}
             >
-              <span className="font-bold text-[1.05rem] tracking-tight">¿Cuál es el plan hoy?</span>
-              <div className="action-arrow w-8 h-8 bg-[#CCFF00] text-[#0A0C0B] rounded-full flex items-center justify-center text-sm font-black shadow-sm">
+              <span>¿Cuál es el plan hoy?</span>
+              <div className="action-arrow-dark w-9 h-9 bg-[#0A0C0B]/12 rounded-full flex items-center justify-center text-base">
                 →
               </div>
             </div>
@@ -348,69 +367,62 @@ export default function App() {
         </div>
 
         {/* ========================================
-           VISTA 2: CREAR PLAN (Elegir Vibe y Título)
-           ======================================== */}
+             VISTA 2: CREAR PLAN
+             ======================================== */}
         <div
           id="view-create"
-          className={`solid-view absolute inset-0 w-full h-full p-6 bg-[#0A0C0B] z-20 flex flex-col overflow-y-auto transition-all duration-300 ${
+          className={`solid-view absolute inset-0 w-full h-full p-[max(24px,env(safe-area-inset-top))_20px_max(24px,env(safe-area-inset-bottom))_20px] bg-[#0A0C0B] z-20 flex flex-col overflow-y-auto transition-all duration-250 ${
             currentView === 'view-create' ? 'active' : 'hidden'
           }`}
         >
-          <div className="flex justify-between items-center mb-4">
+          <div className="flex justify-between items-center mb-3">
             <h3
-              className="cursor-pointer text-sm font-semibold text-[#8A9590] hover:text-white transition-colors"
+              className="cursor-pointer text-[0.95rem] text-[#8A9590] hover:text-white transition-colors"
               onClick={() => switchView('view-map')}
             >
               ← Cancelar
             </h3>
-            <span className="font-bold text-[#CCFF00] text-xs bg-[#CCFF00]/10 px-2.5 py-1 rounded-full border border-[#CCFF00]/20">
-              Paso 1 de 2
-            </span>
+            <span className="font-extrabold text-[#CCFF00] text-[0.9rem]">Paso 1 de 2</span>
           </div>
 
-          <h1 className="text-[1.8rem] font-extrabold text-white mb-1">Nuevo Plan</h1>
-          <p className="subtitle text-sm text-[#8A9590] mb-6">Elige el tono de tu salida con amigos.</p>
+          <h1 className="text-[1.7rem] font-extrabold text-white mb-1 tracking-[-0.5px]">Nuevo Plan</h1>
+          <p className="subtitle text-[0.9rem] text-[#8A9590] mb-5">Define la vibra y el propósito del encuentro.</p>
 
-          <div className="mb-5">
-            <label className="text-xs font-bold text-white block mb-2">
-              ¿Qué van a hacer?
-            </label>
+          <div className="mb-4">
+            <label className="text-[0.85rem] font-bold block mb-1.5 text-white">¿Qué van a hacer?</label>
             <input
               type="text"
               id="plan-title"
+              className="input-dark w-full p-4 rounded-[18px] border border-white/[0.08] bg-[#161A18] text-white text-base outline-none focus:border-[#CCFF00] transition-colors"
               value={planTitle}
               onChange={(e) => setPlanTitle(e.target.value)}
-              placeholder="Ej. Café y estudio en Casco Antiguo"
-              className="w-full p-4 rounded-2xl border border-white/[0.08] text-sm font-semibold outline-none bg-[#161A18] text-white focus:border-[#CCFF00] transition-colors"
             />
           </div>
 
-          <label className="text-xs font-bold text-white block mb-2.5">
-            Selecciona la Vibe
-          </label>
-          <div className="vibe-grid grid grid-cols-2 gap-3 mb-6">
+          <label className="text-[0.85rem] font-bold block mb-2.5 text-white">Selecciona la Vibe</label>
+          <div className="vibe-grid grid grid-cols-2 gap-2.5 mb-5">
             {VIBES.map((vibe) => {
               const isSelected = selectedVibe.id === vibe.id;
               return (
                 <div
                   key={vibe.id}
-                  onClick={() => setSelectedVibe(vibe)}
-                  className={`vibe-option p-4 rounded-2xl border transition-all text-center cursor-pointer ${
+                  onClick={() => selectVibe(vibe)}
+                  className={`vibe-option-dark bg-[#161A18] border-2 rounded-[20px] p-[16px_10px] text-center cursor-pointer transition-all duration-200 ${
                     isSelected
-                      ? 'border-[#CCFF00] bg-[#CCFF00]/10 shadow-[0_0_15px_rgba(204,255,0,0.15)]'
-                      : 'border-white/[0.08] bg-[#161A18] hover:border-white/[0.2]'
+                      ? 'selected border-[#CCFF00] bg-[rgba(204,255,0,0.06)]'
+                      : 'border-white/[0.08] hover:border-white/[0.2]'
                   }`}
                 >
-                  <div className="vibe-emoji text-3xl mb-1.5">{vibe.emoji}</div>
-                  <div className="vibe-name font-bold text-sm text-white">{vibe.name}</div>
+                  <div className="vibe-emoji text-[2rem] mb-1.5">{vibe.emoji}</div>
+                  <div className="vibe-name font-bold text-[0.9rem] text-white">{vibe.name}</div>
                 </div>
               );
             })}
           </div>
 
-          <div className="mt-auto pt-2">
+          <div className="view-footer mt-auto pt-2.5">
             <button
-              className="btn-neon w-full bg-[#CCFF00] hover:bg-[#B5E600] text-[#0A0C0B] p-[18px] rounded-[24px] text-[1.05rem] font-extrabold border-none cursor-pointer text-center shadow-[0_10px_30px_rgba(204,255,0,0.25)] active:scale-[0.97] transition-transform duration-150"
+              className="btn-neon w-full bg-[#CCFF00] hover:bg-[#B5E600] text-[#0A0C0B] p-4 rounded-[22px] text-[1.05rem] font-extrabold border-none cursor-pointer text-center shadow-[0_10px_30px_rgba(204,255,0,0.25)] active:scale-[0.97] transition-transform duration-150"
               onClick={generateInvite}
             >
               Armar enlace de invitación
@@ -419,119 +431,117 @@ export default function App() {
         </div>
 
         {/* ========================================
-           VISTA 3: SALA DE INVITACIÓN
-           ======================================== */}
+             VISTA 3: SALA DE INVITACIÓN
+             ======================================== */}
         <div
           id="view-invite"
-          className={`solid-view absolute inset-0 w-full h-full p-6 bg-[#0A0C0B] z-20 flex flex-col overflow-y-auto transition-all duration-300 ${
+          className={`solid-view absolute inset-0 w-full h-full p-[max(24px,env(safe-area-inset-top))_20px_max(24px,env(safe-area-inset-bottom))_20px] bg-[#0A0C0B] z-20 flex flex-col overflow-y-auto transition-all duration-250 ${
             currentView === 'view-invite' ? 'active' : 'hidden'
           }`}
         >
-          <div className="flex justify-between items-center mb-4">
+          <div className="flex justify-between items-center mb-3">
             <h3
-              className="cursor-pointer text-sm font-semibold text-[#8A9590] hover:text-white transition-colors"
+              className="cursor-pointer text-[0.95rem] text-[#8A9590] hover:text-white transition-colors"
               onClick={() => switchView('view-map')}
             >
               ✕ Cerrar
             </h3>
-            <span className="text-xs bg-[#CCFF00]/10 text-[#CCFF00] px-3 py-1.5 rounded-xl font-bold border border-[#CCFF00]/25">
+            <span className="text-[0.85rem] bg-[rgba(204,255,0,0.1)] text-[#CCFF00] px-3 py-1.5 rounded-xl font-extrabold">
               Plan Activo
             </span>
           </div>
 
-          <h1 className="text-[1.8rem] font-extrabold text-white mb-1">¡Plan listo para rodar! 🔥</h1>
-          <p className="subtitle text-sm text-[#8A9590] mb-6" id="invite-subtitle">
+          <h1 className="text-[1.7rem] font-extrabold text-white mb-1 tracking-[-0.5px]">¡Plan listo para rodar! 🔥</h1>
+          <p className="subtitle text-[0.9rem] text-[#8A9590] mb-5" id="invite-subtitle">
             Vibe: {selectedVibe.emoji} {selectedVibe.name}
           </p>
 
-          <div className="card bg-[#161A18] rounded-3xl p-5 shadow-xs mb-4 text-center border-2 border-dashed border-[#CCFF00]/60">
-            <p className="text-xs text-[#8A9590] mb-1.5 font-medium">
-              Enlace rápido para compartir por WhatsApp
-            </p>
-            <h3 className="text-lg font-bold text-[#CCFF00] mb-3 font-mono">
+          <div className="card-dark bg-[#161A18] rounded-[24px] p-5 shadow-[0_8px_24px_rgba(0,0,0,0.3)] mb-3.5 border-2 border-dashed border-[#CCFF00] text-center">
+            <p className="text-[0.85rem] text-[#8A9590] mb-1.5 font-medium">Enlace rápido para compartir</p>
+            <h3 className="text-[#CCFF00] mb-3 text-[1.2rem] font-mono font-bold">
               {activePlan?.inviteCode || 'planmap.app/join/x9f2'}
             </h3>
             <button
-              className="w-full bg-[#0A0C0B] text-white border border-white/[0.12] hover:bg-black p-3.5 rounded-2xl text-sm font-bold cursor-pointer transition-colors"
+              className="btn-neon w-full bg-[#CCFF00] hover:bg-[#B5E600] text-[#0A0C0B] p-2.5 rounded-[18px] text-[0.95rem] font-extrabold border-none cursor-pointer shadow-md active:scale-[0.97]"
               onClick={handleCopyLink}
             >
               {copiedLink ? '¡Enlace copiado al portapapeles!' : 'Copiar Enlace'}
             </button>
           </div>
 
-          <div className="card bg-[#161A18] rounded-3xl p-5 shadow-xs mb-4 border border-white/[0.08]">
-            <h4 className="text-sm font-bold text-white mb-3">
+          <div className="card-dark bg-[#161A18] rounded-[24px] p-5 shadow-[0_8px_24px_rgba(0,0,0,0.3)] mb-3.5 border border-white/[0.08]">
+            <h4 className="text-[0.95rem] mb-2 text-white font-bold">
               Amigos en camino ({activePlan?.participants.length || 3})
             </h4>
-            <div className="flex items-center gap-2">
-              <div className="w-10 h-10 rounded-full bg-[#0A0C0B] border border-white/[0.1] flex items-center justify-center text-base">
+            <div className="flex gap-2 items-center">
+              <div className="w-[38px] h-[38px] rounded-full bg-[#222825] flex items-center justify-center text-sm">
                 👤
               </div>
-              <div className="w-10 h-10 rounded-full bg-[#0A0C0B] border border-white/[0.1] flex items-center justify-center text-base">
+              <div className="w-[38px] h-[38px] rounded-full bg-[#222825] flex items-center justify-center text-sm">
                 👩💻
               </div>
-              <div className="w-10 h-10 rounded-full bg-[#0A0C0B] border border-white/[0.1] flex items-center justify-center text-base">
+              <div className="w-[38px] h-[38px] rounded-full bg-[#222825] flex items-center justify-center text-sm">
                 🧑🎨
               </div>
-              <span className="text-xs text-[#8A9590] ml-2 font-medium">+ Tú organizando</span>
+              <span className="text-[0.85rem] text-[#8A9590] ml-2 font-medium">+ Tú organizando</span>
             </div>
           </div>
 
-          <div className="mt-auto pt-2">
+          <div className="view-footer mt-auto pt-2.5">
             <button
-              className="btn-neon w-full bg-[#CCFF00] hover:bg-[#B5E600] text-[#0A0C0B] p-[18px] rounded-[24px] text-[1.05rem] font-extrabold border-none cursor-pointer text-center shadow-[0_10px_30px_rgba(204,255,0,0.25)] active:scale-[0.97] transition-transform duration-150"
+              className="btn-neon w-full bg-[#CCFF00] hover:bg-[#B5E600] text-[#0A0C0B] p-4 rounded-[22px] text-[1.05rem] font-extrabold border-none cursor-pointer text-center shadow-[0_10px_30px_rgba(204,255,0,0.25)] active:scale-[0.97] transition-transform duration-150"
               onClick={() => switchView('view-map')}
             >
-              Volver al Mapa Vivo
+              Volver al Mapa
             </button>
           </div>
         </div>
 
         {/* ========================================
-           VISTA 4: RECUERDO COLECTIVO (POSTAL)
-           ======================================== */}
+             VISTA 4: RECUERDO / POSTAL
+             ======================================== */}
         <div
           id="view-memory"
-          className={`solid-view absolute inset-0 w-full h-full p-6 bg-[#0A0C0B] z-20 flex flex-col overflow-y-auto transition-all duration-300 ${
+          className={`solid-view absolute inset-0 w-full h-full p-[max(24px,env(safe-area-inset-top))_20px_max(24px,env(safe-area-inset-bottom))_20px] bg-[#0A0C0B] z-20 flex flex-col overflow-y-auto transition-all duration-250 ${
             currentView === 'view-memory' ? 'active' : 'hidden'
           }`}
         >
-          <div className="flex justify-between items-center mb-4">
+          <div className="flex justify-between items-center mb-3">
             <h3
-              className="cursor-pointer text-sm font-semibold text-[#8A9590] hover:text-white transition-colors"
+              className="cursor-pointer text-[0.95rem] text-[#8A9590] hover:text-white transition-colors"
               onClick={() => switchView('view-map')}
             >
               ← Volver al Mapa
             </h3>
-            <span className="font-bold text-white text-sm">Recuerdo Colectivo</span>
+            <span className="font-extrabold text-white text-[0.9rem]">Recuerdo Colectivo</span>
           </div>
 
-          <div className="postal-card bg-gradient-to-br from-[#161A18] to-[#0A0C0B] border border-[#CCFF00]/30 text-white p-6 rounded-3xl text-center mb-4 shadow-[0_12px_28px_rgba(0,0,0,0.6)]">
-            <div className="postal-img-placeholder w-full h-44 bg-black/40 rounded-2xl flex items-center justify-center text-5xl mb-4 border border-white/[0.06] shadow-inner">
+          <div className="postal-card-dark bg-gradient-to-br from-[#161A18] to-[#0A0C0B] text-white p-6 rounded-[28px] text-center mb-4 border border-white/[0.08] shadow-[0_16px_35px_rgba(0,0,0,0.5)]">
+            <div className="postal-img-placeholder w-full h-[150px] bg-white/[0.03] rounded-[18px] flex items-center justify-center text-[3rem] mb-3.5 border border-white/[0.08]">
               🌅
             </div>
-            <h3 className="text-xl font-extrabold mb-1" id="postal-title">
+            <h3 className="mb-1 text-[1.3rem] font-extrabold" id="postal-title">
               {activeMemory.title || 'Café y Estudio en Casco'}
             </h3>
-            <p className="text-xs text-[#8A9590] font-medium">Panamá · 6 de Noviembre, 2026</p>
+            <p className="text-[0.85rem] text-[#8A9590]">Panamá · 6 de Noviembre, 2026</p>
           </div>
 
-          <div className="card bg-[#161A18] rounded-3xl p-5 shadow-xs mb-4 border border-white/[0.08]">
-            <p className="text-sm italic text-center text-[#8A9590] leading-relaxed">
+          <div className="card-dark bg-[#161A18] rounded-[24px] p-5 shadow-[0_8px_24px_rgba(0,0,0,0.3)] mb-3.5 border border-white/[0.08]">
+            <p className="text-[0.9rem] italic text-center text-[#8A9590] leading-relaxed">
               “Un espacio libre de ruido para conectar de verdad.”
             </p>
           </div>
 
-          <div className="mt-auto pt-2 flex gap-3">
+          <div className="view-footer mt-auto pt-2.5 flex gap-2.5">
             <button
-              className="flex-1 bg-transparent text-white border-2 border-white/[0.12] hover:bg-white/[0.05] p-4 rounded-2xl text-sm font-bold cursor-pointer transition-colors"
+              className="input-dark flex-1 text-center cursor-pointer font-bold bg-[#161A18] hover:bg-[#222825] p-3.5 rounded-[18px] text-white border border-white/[0.08] transition-colors"
               onClick={handleSavePostal}
               disabled={isSavingPostal}
             >
-              {isSavingPostal ? 'Guardando...' : 'Guardar Postal'}
+              {isSavingPostal ? 'Guardando...' : 'Guardar'}
             </button>
             <button
-              className="btn-neon flex-1 bg-[#CCFF00] hover:bg-[#B5E600] text-[#0A0C0B] border-none p-4 rounded-2xl text-sm font-extrabold cursor-pointer shadow-lg active:scale-[0.98] transition-all"
+              className="btn-neon flex-1 p-3.5 rounded-[18px] text-[0.95rem] font-extrabold border-none cursor-pointer shadow-md active:scale-[0.97]"
               onClick={handleSharePostal}
             >
               Compartir
