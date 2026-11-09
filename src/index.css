@@ -8,6 +8,28 @@
   --text-gray: #8A9590;
   --accent-neon: #CCFF00;
   --accent-neon-hover: #B5E600;
+  --accent-whatsapp: #25D366;
+}
+
+.btn-whatsapp {
+  background-color: var(--accent-whatsapp);
+  color: #FFFFFF;
+  padding: 12px 18px;
+  border-radius: 18px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  border: none;
+  cursor: pointer;
+  text-align: center;
+  box-shadow: 0 8px 20px rgba(37, 211, 102, 0.3);
+  transition: transform 0.15s ease, background-color 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}
+.btn-whatsapp:active {
+  transform: scale(0.97);
 }
 
 @layer base {

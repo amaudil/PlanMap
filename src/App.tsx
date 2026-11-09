@@ -480,7 +480,7 @@ export default function App() {
                 )}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="bg-[#25D366] hover:bg-[#20ba59] text-white px-3.5 py-2.5 rounded-[18px] text-[0.95rem] font-extrabold flex items-center justify-center no-underline active:scale-[0.97] transition-all"
+                className="btn-whatsapp px-4 py-2.5 rounded-[18px] text-[0.95rem] font-bold flex items-center justify-center no-underline active:scale-[0.97]"
                 title="Compartir por WhatsApp"
               >
                 WhatsApp
