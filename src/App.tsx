@@ -1,9 +1,11 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import L from 'leaflet';
 import confetti from 'canvas-confetti';
-import { PlanExperience, PostcardMemory, Vibe } from './types';
-import { VIBES, INITIAL_PLANS, INITIAL_MEMORIES } from './data/mockData';
+import { PlanExperience, PostcardMemory, Vibe, ChatMessage } from './types';
+import { VIBES, INITIAL_PLANS, INITIAL_MEMORIES, INITIAL_MESSAGES } from './data/mockData';
 import { downloadPostcardAsImage } from './utils/postcardCanvas';
+import { GroupChatView } from './components/GroupChatView';
+import { soundManager } from './utils/audio';
 
 export default function App() {
   // Current active view: 'view-welcome' | 'view-map' | 'view-create' | 'view-invite' | 'view-memory'
@@ -17,6 +19,24 @@ export default function App() {
   const [selectedVibe, setSelectedVibe] = useState<Vibe>(VIBES[0]);
   const [planTitle, setPlanTitle] = useState<string>('Café y estudio en Casco Antiguo');
 
+  // Invitation Room tab: 'details' | 'chat'
+  const [inviteTab, setInviteTab] = useState<'details' | 'chat'>('details');
+
+  // Real-time Chat state keyed by planId
+  const [chatMessages, setChatMessages] = useState<Record<string, ChatMessage[]>>(() => {
+    const saved = localStorage.getItem('planmap_all_chats');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch {
+        // fallback
+      }
+    }
+    return {
+      'plan-1': INITIAL_MESSAGES,
+    };
+  });
+
   // Memory state
   const [memories, setMemories] = useState<PostcardMemory[]>(INITIAL_MEMORIES);
   const [activeMemory, setActiveMemory] = useState<PostcardMemory>(INITIAL_MEMORIES[0]);
@@ -29,6 +49,122 @@ export default function App() {
   // UI state
   const [copiedLink, setCopiedLink] = useState(false);
   const [isSavingPostal, setIsSavingPostal] = useState(false);
+  const broadcastChannelRef = useRef<BroadcastChannel | null>(null);
+
+  // Sync chat messages to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem('planmap_all_chats', JSON.stringify(chatMessages));
+    } catch {
+      // storage limit or private mode safe
+    }
+  }, [chatMessages]);
+
+  // Set up BroadcastChannel for cross-tab real-time sync
+  useEffect(() => {
+    if (typeof BroadcastChannel === 'undefined') return;
+    const channelName = `planmap_chat_${activePlan.id}`;
+    const channel = new BroadcastChannel(channelName);
+    broadcastChannelRef.current = channel;
+
+    channel.onmessage = (event: MessageEvent<ChatMessage>) => {
+      const incomingMsg = event.data;
+      if (incomingMsg && incomingMsg.planId === activePlan.id) {
+        setChatMessages((prev) => {
+          const list = prev[activePlan.id] || [];
+          if (list.some((m) => m.id === incomingMsg.id)) return prev;
+          soundManager.playChime();
+          return {
+            ...prev,
+            [activePlan.id]: [...list, incomingMsg],
+          };
+        });
+      }
+    };
+
+    return () => {
+      channel.close();
+    };
+  }, [activePlan.id]);
+
+  // Current plan messages
+  const currentPlanMessages = chatMessages[activePlan.id] || activePlan.messages || [];
+
+  // Handler to send message
+  const handleSendMessage = useCallback(
+    (text: string, type: 'text' | 'status' | 'coordination' = 'text') => {
+      const now = new Date();
+      const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+      const newMsg: ChatMessage = {
+        id: `msg-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`,
+        planId: activePlan.id,
+        senderId: 'u-1',
+        senderName: 'Tú',
+        senderAvatar: '👤',
+        text,
+        timestamp: timeStr,
+        isSelf: true,
+        type,
+      };
+
+      setChatMessages((prev) => ({
+        ...prev,
+        [activePlan.id]: [...(prev[activePlan.id] || []), newMsg],
+      }));
+
+      // Broadcast to other open tabs
+      if (broadcastChannelRef.current) {
+        broadcastChannelRef.current.postMessage(newMsg);
+      }
+
+      // Simulate realistic social reply from participants if alone
+      const lower = text.toLowerCase();
+      let replyText = '';
+      let replySender = { name: 'Sofía R.', avatar: '👩💻', id: 'u-2' };
+
+      if (lower.includes('llegu') || lower.includes('aquí') || lower.includes('punto')) {
+        replyText = '¡Buenísimo! Entrando a la calle ahora mismo. ¡En 2 minutos nos vemos!';
+        replySender = { name: 'Sofía R.', avatar: '👩💻', id: 'u-2' };
+      } else if (lower.includes('mesa') || lower.includes('enchufe') || lower.includes('cargador')) {
+        replyText = 'Genial que conseguiste mesa. Ya voy asegurando el café ☕';
+        replySender = { name: 'Mateo V.', avatar: '🧑🎨', id: 'u-3' };
+      } else if (lower.includes('bici') || lower.includes('camino') || lower.includes('tard')) {
+        replyText = 'Tranqui, aquí te guardamos tu puesto y la buena vibra ✨';
+        replySender = { name: 'Sofía R.', avatar: '👩💻', id: 'u-2' };
+      } else {
+        const randomReplies = [
+          '¡Anotado! Ya voy llegando al lugar.',
+          '¡Perfecto! Nos vemos en breve.',
+          'Confirmadísimo, qué buena vibra hoy 🔥',
+        ];
+        replyText = randomReplies[Math.floor(Math.random() * randomReplies.length)];
+      }
+
+      const timer = setTimeout(() => {
+        const replyTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+        const autoReply: ChatMessage = {
+          id: `msg-reply-${Date.now()}`,
+          planId: activePlan.id,
+          senderId: replySender.id,
+          senderName: replySender.name,
+          senderAvatar: replySender.avatar,
+          text: replyText,
+          timestamp: replyTime,
+          isSelf: false,
+          type: 'text',
+        };
+
+        setChatMessages((prev) => ({
+          ...prev,
+          [activePlan.id]: [...(prev[activePlan.id] || []), autoReply],
+        }));
+        soundManager.playChime();
+      }, 1500);
+
+      return () => clearTimeout(timer);
+    },
+    [activePlan.id]
+  );
 
   // Initialize and update Leaflet Map
   useEffect(() => {
@@ -336,6 +472,17 @@ export default function App() {
 
             <div className="flex items-center gap-2 pointer-events-auto">
               <button
+                className="relative icon-btn-dark w-[46px] h-[46px] bg-[#161A18]/85 backdrop-blur-[16px] rounded-full flex items-center justify-center text-[1.2rem] text-white border border-white/[0.08] shadow-[0_8px_24px_rgba(0,0,0,0.4)] cursor-pointer hover:bg-[#222825] active:scale-95 transition-all"
+                onClick={() => {
+                  setInviteTab('chat');
+                  switchView('view-invite');
+                }}
+                title="Chat de Coordinación Grupal"
+              >
+                💬
+                <span className="absolute -top-1 -right-1 w-3 h-3 bg-[#CCFF00] rounded-full border-2 border-[#0A0C0B] animate-pulse"></span>
+              </button>
+              <button
                 className="icon-btn-dark w-[46px] h-[46px] bg-[#161A18]/85 backdrop-blur-[16px] rounded-full flex items-center justify-center text-[1.2rem] text-white border border-white/[0.08] shadow-[0_8px_24px_rgba(0,0,0,0.4)] cursor-pointer hover:bg-[#222825] active:scale-95 transition-all"
                 onClick={() => switchView('view-welcome')}
                 title="Ver Bienvenida"
@@ -431,70 +578,183 @@ export default function App() {
         </div>
 
         {/* ========================================
-             VISTA 3: SALA DE INVITACIÓN
+             VISTA 3: SALA DE INVITACIÓN & CHAT GRUPAL
              ======================================== */}
         <div
           id="view-invite"
-          className={`solid-view absolute inset-0 w-full h-full p-[max(24px,env(safe-area-inset-top))_20px_max(24px,env(safe-area-inset-bottom))_20px] bg-[#0A0C0B] z-20 flex flex-col overflow-y-auto transition-all duration-250 ${
+          className={`solid-view absolute inset-0 w-full h-full bg-[#0A0C0B] z-20 flex flex-col transition-all duration-250 ${
             currentView === 'view-invite' ? 'active' : 'hidden'
           }`}
         >
-          <div className="flex justify-between items-center mb-3">
-            <h3
-              className="cursor-pointer text-[0.95rem] text-[#8A9590] hover:text-white transition-colors"
-              onClick={() => switchView('view-map')}
-            >
-              ✕ Cerrar
-            </h3>
-            <span className="text-[0.85rem] bg-[rgba(204,255,0,0.1)] text-[#CCFF00] px-3 py-1.5 rounded-xl font-extrabold">
-              Plan Activo
-            </span>
-          </div>
-
-          <h1 className="text-[1.7rem] font-extrabold text-white mb-1 tracking-[-0.5px]">¡Plan listo para rodar! 🔥</h1>
-          <p className="subtitle text-[0.9rem] text-[#8A9590] mb-5" id="invite-subtitle">
-            Vibe: {selectedVibe.emoji} {selectedVibe.name}
-          </p>
-
-          <div className="card-dark bg-[#161A18] rounded-[24px] p-5 shadow-[0_8px_24px_rgba(0,0,0,0.3)] mb-3.5 border-2 border-dashed border-[#CCFF00] text-center">
-            <p className="text-[0.85rem] text-[#8A9590] mb-1.5 font-medium">Enlace rápido para compartir</p>
-            <h3 className="text-[#CCFF00] mb-3 text-[1.2rem] font-mono font-bold">
-              {activePlan?.inviteCode || 'planmap.app/join/x9f2'}
-            </h3>
-            <button
-              className="btn-neon w-full bg-[#CCFF00] hover:bg-[#B5E600] text-[#0A0C0B] p-2.5 rounded-[18px] text-[0.95rem] font-extrabold border-none cursor-pointer shadow-md active:scale-[0.97]"
-              onClick={handleCopyLink}
-            >
-              {copiedLink ? '¡Enlace copiado al portapapeles!' : 'Copiar Enlace'}
-            </button>
-          </div>
-
-          <div className="card-dark bg-[#161A18] rounded-[24px] p-5 shadow-[0_8px_24px_rgba(0,0,0,0.3)] mb-3.5 border border-white/[0.08]">
-            <h4 className="text-[0.95rem] mb-2 text-white font-bold">
-              Amigos en camino ({activePlan?.participants.length || 3})
-            </h4>
-            <div className="flex gap-2 items-center">
-              <div className="w-[38px] h-[38px] rounded-full bg-[#222825] flex items-center justify-center text-sm">
-                👤
+          {/* Header persistente de la Sala */}
+          <div className="p-[max(20px,env(safe-area-inset-top))_20px_12px_20px] border-b border-white/[0.06] bg-[#0A0C0B] shrink-0">
+            <div className="flex justify-between items-center mb-3">
+              <button
+                className="cursor-pointer text-[0.95rem] text-[#8A9590] hover:text-white transition-colors bg-transparent border-none flex items-center gap-1"
+                onClick={() => switchView('view-map')}
+              >
+                <span>✕</span> Cerrar
+              </button>
+              <div className="flex items-center gap-2">
+                <span className="flex items-center gap-1.5 text-[0.78rem] bg-[rgba(204,255,0,0.1)] text-[#CCFF00] px-2.5 py-1 rounded-full font-extrabold border border-[#CCFF00]/20">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#CCFF00] animate-pulse"></span>
+                  En Vivo
+                </span>
               </div>
-              <div className="w-[38px] h-[38px] rounded-full bg-[#222825] flex items-center justify-center text-sm">
-                👩💻
-              </div>
-              <div className="w-[38px] h-[38px] rounded-full bg-[#222825] flex items-center justify-center text-sm">
-                🧑🎨
-              </div>
-              <span className="text-[0.85rem] text-[#8A9590] ml-2 font-medium">+ Tú organizando</span>
+            </div>
+
+            {/* Segmented Tab Bar */}
+            <div className="flex bg-[#161A18] p-1 rounded-2xl border border-white/[0.06]">
+              <button
+                onClick={() => setInviteTab('details')}
+                className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                  inviteTab === 'details'
+                    ? 'bg-[#222825] text-white shadow-[0_2px_8px_rgba(0,0,0,0.4)] border border-white/[0.08]'
+                    : 'text-[#8A9590] hover:text-white'
+                }`}
+              >
+                <span>📋</span> Enlace & Grupo
+              </button>
+              <button
+                onClick={() => setInviteTab('chat')}
+                className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                  inviteTab === 'chat'
+                    ? 'bg-[#CCFF00] text-[#0A0C0B] font-extrabold shadow-[0_2px_12px_rgba(204,255,0,0.25)]'
+                    : 'text-[#8A9590] hover:text-white'
+                }`}
+              >
+                <span>💬</span> Chat Grupal
+                {currentPlanMessages.length > 0 && (
+                  <span
+                    className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                      inviteTab === 'chat' ? 'bg-[#0A0C0B] text-[#CCFF00]' : 'bg-[#CCFF00] text-[#0A0C0B]'
+                    }`}
+                  >
+                    {currentPlanMessages.length}
+                  </span>
+                )}
+              </button>
             </div>
           </div>
 
-          <div className="view-footer mt-auto pt-2.5">
-            <button
-              className="btn-neon w-full bg-[#CCFF00] hover:bg-[#B5E600] text-[#0A0C0B] p-4 rounded-[22px] text-[1.05rem] font-extrabold border-none cursor-pointer text-center shadow-[0_10px_30px_rgba(204,255,0,0.25)] active:scale-[0.97] transition-transform duration-150"
-              onClick={() => switchView('view-map')}
-            >
-              Volver al Mapa
-            </button>
-          </div>
+          {/* TAB 1: Detalles & Enlace de Invitación */}
+          {inviteTab === 'details' ? (
+            <div className="flex-1 overflow-y-auto p-[16px_20px_max(20px,env(safe-area-inset-bottom))_20px] flex flex-col justify-between">
+              <div>
+                <h1 className="text-[1.6rem] font-extrabold text-white mb-1 tracking-[-0.5px]">
+                  ¡Plan listo para rodar! 🔥
+                </h1>
+                <p className="subtitle text-[0.88rem] text-[#8A9590] mb-4">
+                  Vibe: {selectedVibe.emoji} {selectedVibe.name} · {activePlan?.locationName}
+                </p>
+
+                {/* Card de Enlace */}
+                <div className="card-dark bg-[#161A18] rounded-[24px] p-5 shadow-[0_8px_24px_rgba(0,0,0,0.3)] mb-3.5 border-2 border-dashed border-[#CCFF00]/70 text-center">
+                  <p className="text-[0.85rem] text-[#8A9590] mb-1.5 font-medium">Enlace rápido para compartir</p>
+                  <h3 className="text-[#CCFF00] mb-3 text-[1.15rem] font-mono font-bold select-all">
+                    {activePlan?.inviteCode || 'planmap.app/join/x9f2'}
+                  </h3>
+                  <div className="flex gap-2">
+                    <button
+                      className="btn-neon flex-1 bg-[#CCFF00] hover:bg-[#B5E600] text-[#0A0C0B] p-2.5 rounded-[18px] text-[0.92rem] font-extrabold border-none cursor-pointer shadow-md active:scale-[0.97]"
+                      onClick={handleCopyLink}
+                    >
+                      {copiedLink ? '✓ Copiado' : 'Copiar Enlace'}
+                    </button>
+                    <a
+                      href={`https://wa.me/?text=${encodeURIComponent(
+                        `¡Súmate al plan en PlanMap! 🔥 "${activePlan.title}" en ${activePlan.locationName}. Únete aquí: https://${activePlan.inviteCode}`
+                      )}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="bg-[#25D366] hover:bg-[#20ba59] text-white px-3.5 py-2.5 rounded-[18px] text-[0.92rem] font-extrabold flex items-center justify-center no-underline active:scale-[0.97] transition-all"
+                      title="Compartir por WhatsApp"
+                    >
+                      WhatsApp
+                    </a>
+                  </div>
+                </div>
+
+                {/* Banner de acceso directo al Chat */}
+                <div
+                  onClick={() => setInviteTab('chat')}
+                  className="card-dark bg-gradient-to-r from-[#161A18] to-[#1d2320] rounded-[22px] p-4 shadow-[0_8px_24px_rgba(0,0,0,0.3)] mb-3.5 border border-[#CCFF00]/25 cursor-pointer hover:border-[#CCFF00] transition-all group"
+                >
+                  <div className="flex items-center justify-between mb-1.5">
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg">💬</span>
+                      <h4 className="text-sm font-bold text-white group-hover:text-[#CCFF00] transition-colors">
+                        Chat de Coordinación Grupal
+                      </h4>
+                    </div>
+                    <span className="text-xs text-[#CCFF00] font-extrabold flex items-center gap-1">
+                      Abrir →
+                    </span>
+                  </div>
+                  <p className="text-xs text-[#8A9590] truncate italic">
+                    {currentPlanMessages.length > 0
+                      ? `${currentPlanMessages[currentPlanMessages.length - 1].senderName}: "${currentPlanMessages[currentPlanMessages.length - 1].text}"`
+                      : 'Coordina llegadas, puntos exactos y batería con los asistentes.'}
+                  </p>
+                </div>
+
+                {/* Card de Participantes */}
+                <div className="card-dark bg-[#161A18] rounded-[24px] p-5 shadow-[0_8px_24px_rgba(0,0,0,0.3)] mb-3.5 border border-white/[0.08]">
+                  <div className="flex justify-between items-center mb-3">
+                    <h4 className="text-[0.95rem] text-white font-bold">
+                      Amigos en camino ({activePlan?.participants.length || 3})
+                    </h4>
+                    <span className="text-[0.78rem] text-[#CCFF00] font-semibold">● 3 activos</span>
+                  </div>
+                  <div className="space-y-2.5">
+                    {activePlan?.participants.map((p) => (
+                      <div key={p.id} className="flex items-center justify-between text-xs">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-[34px] h-[34px] rounded-full bg-[#222825] border border-white/[0.08] flex items-center justify-center text-sm">
+                            {p.avatar}
+                          </div>
+                          <div>
+                            <div className="font-bold text-white flex items-center gap-1.5">
+                              {p.name}
+                              {p.role === 'organizer' && (
+                                <span className="text-[9px] bg-[#CCFF00]/15 text-[#CCFF00] px-1.5 py-0.5 rounded-md font-bold">
+                                  Host
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-[11px] text-[#8A9590]">
+                              {p.status === 'arrived' ? 'En el punto de encuentro' : `En camino · Llega en ${p.eta || 'unos min'}`}
+                            </div>
+                          </div>
+                        </div>
+                        <span className="text-[11px] font-bold text-[#8A9590]">
+                          {p.status === 'arrived' ? '📍 Llegó' : '🚲 En ruta'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="view-footer mt-auto pt-2.5">
+                <button
+                  className="btn-neon w-full bg-[#CCFF00] hover:bg-[#B5E600] text-[#0A0C0B] p-4 rounded-[22px] text-[1.05rem] font-extrabold border-none cursor-pointer text-center shadow-[0_10px_30px_rgba(204,255,0,0.25)] active:scale-[0.97] transition-transform duration-150"
+                  onClick={() => switchView('view-map')}
+                >
+                  Volver al Mapa
+                </button>
+              </div>
+            </div>
+          ) : (
+            /* TAB 2: Chat Grupal en Tiempo Real */
+            <GroupChatView
+              plan={activePlan}
+              messages={currentPlanMessages}
+              onSendMessage={handleSendMessage}
+              onBackToDetails={() => setInviteTab('details')}
+              onCloseRoom={() => switchView('view-map')}
+            />
+          )}
         </div>
 
         {/* ========================================

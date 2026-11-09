@@ -24,6 +24,19 @@ export interface Participant {
   signature?: string;
 }
 
+export interface ChatMessage {
+  id: string;
+  planId: string;
+  senderId: string;
+  senderName: string;
+  senderAvatar: string;
+  text: string;
+  timestamp: string;
+  isSelf?: boolean;
+  type?: 'text' | 'status' | 'coordination';
+  reaction?: string;
+}
+
 export interface PlanExperience {
   id: string;
   title: string;
@@ -38,6 +51,7 @@ export interface PlanExperience {
   status: 'active' | 'in_progress' | 'completed';
   participants: Participant[];
   notes?: string;
+  messages?: ChatMessage[];
   postcard?: PostcardMemory;
 }
 

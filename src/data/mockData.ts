@@ -1,4 +1,4 @@
-import { Vibe, PlanExperience, PostcardMemory } from '../types';
+import { Vibe, PlanExperience, PostcardMemory, ChatMessage } from '../types';
 
 export const VIBES: Vibe[] = [
   {
@@ -74,6 +74,54 @@ export const POPULAR_LOCATIONS = [
   },
 ];
 
+export const INITIAL_MESSAGES: ChatMessage[] = [
+  {
+    id: 'msg-1',
+    planId: 'plan-1',
+    senderId: 'u-2',
+    senderName: 'Sofía R.',
+    senderAvatar: '👩💻',
+    text: '¡Hola a todos! Ya estoy empacando la laptop y cuadernos. ¿Tienen mesa adentro o en terraza?',
+    timestamp: '16:15',
+    isSelf: false,
+    type: 'text',
+  },
+  {
+    id: 'msg-2',
+    planId: 'plan-1',
+    senderId: 'u-3',
+    senderName: 'Mateo V.',
+    senderAvatar: '🧑🎨',
+    text: 'Voy en bici por la Cinta Costera, llego en 8 min. ¿Alguien quiere que pida un espresso?',
+    timestamp: '16:18',
+    isSelf: false,
+    type: 'text',
+  },
+  {
+    id: 'msg-3',
+    planId: 'plan-1',
+    senderId: 'u-1',
+    senderName: 'Tú',
+    senderAvatar: '👤',
+    text: 'Ya reservé la mesa del fondo cerca de la pared con enchufes. ¡Aquí los espero! ⚡',
+    timestamp: '16:21',
+    isSelf: true,
+    type: 'coordination',
+  },
+  {
+    id: 'msg-4',
+    planId: 'plan-1',
+    senderId: 'u-2',
+    senderName: 'Sofía R.',
+    senderAvatar: '👩💻',
+    text: '¡Excelente! Llevo una extensión múltiple por si acaso 👍',
+    timestamp: '16:22',
+    isSelf: false,
+    type: 'text',
+    reaction: '⚡',
+  },
+];
+
 export const INITIAL_PLANS: PlanExperience[] = [
   {
     id: 'plan-1',
@@ -88,6 +136,7 @@ export const INITIAL_PLANS: PlanExperience[] = [
     inviteCode: 'planmap.app/join/x9f2',
     status: 'active',
     notes: 'Mesa al fondo cerca del patio interior con enchufes. Traigan laptops o apuntes.',
+    messages: INITIAL_MESSAGES,
     participants: [
       {
         id: 'u-1',
