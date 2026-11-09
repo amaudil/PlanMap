@@ -133,7 +133,7 @@ export const INITIAL_PLANS: PlanExperience[] = [
     coordinates: [8.9824, -79.5199],
     date: 'Hoy, 6 Noviembre',
     time: '4:30 PM - 6:30 PM',
-    inviteCode: 'planmap.app/join/x9f2',
+    inviteCode: 'planealo-aqui.netlify.app/join/x9f2',
     status: 'active',
     notes: 'Mesa al fondo cerca del patio interior con enchufes. Traigan laptops o apuntes.',
     messages: INITIAL_MESSAGES,

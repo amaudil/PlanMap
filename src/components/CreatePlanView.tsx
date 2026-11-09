@@ -46,7 +46,7 @@ export const CreatePlanView: React.FC<CreatePlanViewProps> = ({
       coordinates: selectedLocation.coords,
       date: dateStr,
       time: timeStr,
-      inviteCode: `planmap.app/join/${randomCode}`,
+      inviteCode: `planealo-aqui.netlify.app/join/${randomCode}`,
       status: 'active',
       notes: notes,
       participants: [

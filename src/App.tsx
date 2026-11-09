@@ -153,7 +153,7 @@ export default function App() {
       coordinates: [8.9824, -79.5199],
       date: 'Hoy, 6 Noviembre',
       time: '4:30 PM - 6:30 PM',
-      inviteCode: `planmap.app/join/${randomCode}`,
+      inviteCode: `planealo-aqui.netlify.app/join/${randomCode}`,
       status: 'active',
       participants: [
         {
@@ -221,7 +221,9 @@ export default function App() {
   };
 
   const handleCopyLink = () => {
-    navigator.clipboard.writeText(`https://${activePlan?.inviteCode || 'planmap.app/join/x9f2'}`);
+    const rawCode = activePlan?.inviteCode || 'planealo-aqui.netlify.app/join/x9f2';
+    const fullUrl = rawCode.startsWith('http') ? rawCode : `https://${rawCode}`;
+    navigator.clipboard.writeText(fullUrl);
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 2200);
   };
@@ -458,8 +460,8 @@ export default function App() {
 
           <div className="card-dark bg-[#161A18] rounded-[24px] p-5 shadow-[0_8px_24px_rgba(0,0,0,0.3)] mb-3.5 border-2 border-dashed border-[#CCFF00]/70 text-center">
             <p className="text-[0.85rem] text-[#8A9590] mb-1.5 font-medium">Enlace rápido para compartir</p>
-            <h3 className="text-[#CCFF00] mb-3 text-[1.2rem] font-mono font-bold select-all">
-              {activePlan?.inviteCode || 'planmap.app/join/x9f2'}
+            <h3 className="text-[#CCFF00] mb-3 text-[1.15rem] font-mono font-bold select-all break-all">
+              {activePlan?.inviteCode || 'planealo-aqui.netlify.app/join/x9f2'}
             </h3>
             <div className="flex gap-2">
               <button
@@ -470,7 +472,11 @@ export default function App() {
               </button>
               <a
                 href={`https://wa.me/?text=${encodeURIComponent(
-                  `¡Súmate al plan en PlanMap! 🔥 "${activePlan.title}" en ${activePlan.locationName}. Únete aquí: https://${activePlan.inviteCode}`
+                  `¡Súmate al plan en PlanMap! 🔥 "${activePlan.title}" en ${activePlan.locationName}. Únete aquí: ${
+                    (activePlan?.inviteCode || 'planealo-aqui.netlify.app/join/x9f2').startsWith('http')
+                      ? activePlan?.inviteCode
+                      : `https://${activePlan?.inviteCode || 'planealo-aqui.netlify.app/join/x9f2'}`
+                  }`
                 )}`}
                 target="_blank"
                 rel="noopener noreferrer"
