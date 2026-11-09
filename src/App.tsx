@@ -1,64 +1,61 @@
 import React, { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
 import confetti from 'canvas-confetti';
-import { PlanExperience, PostcardMemory, Vibe } from './types';
-import { VIBES, INITIAL_PLANS, INITIAL_MEMORIES } from './data/mockData';
 import { downloadPostcardAsImage } from './utils/postcardCanvas';
+import { PostcardMemory } from './types';
+
+interface PlanData {
+  title: string;
+  vibe: string;
+}
+
+const VIBE_OPTIONS = [
+  { name: 'Chill', emoji: '☕' },
+  { name: 'Energía', emoji: '👟' },
+  { name: 'Aire libre', emoji: '🌳' },
+  { name: 'Nocturno', emoji: '🌙' },
+];
 
 export default function App() {
-  // Current active view: 'view-welcome' | 'view-map' | 'view-create' | 'view-invite' | 'view-memory'
-  const [currentView, setCurrentView] = useState<string>(() => {
-    return localStorage.getItem('planmap_onboarding_seen') ? 'view-map' : 'view-welcome';
-  });
+  // GESTIÓN INTELIGENTE DE RUTAS POR URL
+  const [currentView, setCurrentView] = useState<string>('view-welcome');
+  const [isGuestMode, setIsGuestMode] = useState<boolean>(false);
+  const [guestJoined, setGuestJoined] = useState<boolean>(false);
 
-  // Plan state
-  const [plans, setPlans] = useState<PlanExperience[]>(INITIAL_PLANS);
-  const [activePlan, setActivePlan] = useState<PlanExperience>(INITIAL_PLANS[0]);
-  const [selectedVibe, setSelectedVibe] = useState<Vibe>(VIBES[0]);
+  // Form & Plan state
   const [planTitle, setPlanTitle] = useState<string>('Café y estudio en Casco Antiguo');
+  const [selectedVibeText, setSelectedVibeText] = useState<string>('☕ Chill');
+  const [inviteSubtitle, setInviteSubtitle] = useState<string>('Vibe: ☕ Chill · Café y estudio en Casco Antiguo');
+  const [inviteUrl, setInviteUrl] = useState<string>(() => {
+    const host = typeof window !== 'undefined' && window.location.host ? window.location.host : 'planealo-aqui.netlify.app';
+    return `https://${host}/?plan=active`;
+  });
+  const [postalTitle, setPostalTitle] = useState<string>('Café y Estudio en Casco');
 
-  // Memory state
-  const [memories, setMemories] = useState<PostcardMemory[]>(INITIAL_MEMORIES);
-  const [activeMemory, setActiveMemory] = useState<PostcardMemory>(INITIAL_MEMORIES[0]);
-
-  // Leaflet map reference
+  // Leaflet map refs
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
-  const markersRef = useRef<L.Marker[]>([]);
 
-  // UI state
-  const [copiedLink, setCopiedLink] = useState(false);
-  const [isSavingPostal, setIsSavingPostal] = useState(false);
-  const [isGuestMode, setIsGuestMode] = useState<boolean>(() => {
-    return typeof window !== 'undefined' && window.location.search.includes('plan=');
-  });
-  const [guestJoined, setGuestJoined] = useState(false);
+  // Initial routing on mount
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
 
-  const copyInviteLink = () => {
-    const url = "https://planealo-aqui.netlify.app/?plan=active";
-    navigator.clipboard.writeText(url);
-    setCopiedLink(true);
-    setTimeout(() => setCopiedLink(false), 2200);
-  };
+    const urlParams = new URLSearchParams(window.location.search);
+    const planParam = urlParams.get('plan');
+    const seenWelcome = localStorage.getItem('planealo_onboarding_seen');
 
-  const shareOnWhatsApp = () => {
-    const text = encodeURIComponent(
-      `¡Súmate al plan en PlanMap! 🔥 "${activePlan.title}" en ${activePlan.locationName}. Únete aquí: https://planealo-aqui.netlify.app/?plan=active`
-    );
-    window.open(`https://wa.me/?text=${text}`, '_blank');
-  };
+    if (planParam) {
+      loadSharedPlan(planParam);
+      setIsGuestMode(true);
+      switchView('view-invite');
+    } else if (seenWelcome) {
+      switchView('view-map');
+    } else {
+      switchView('view-welcome');
+    }
+  }, []);
 
-  const joinAsGuest = () => {
-    setGuestJoined(true);
-    confetti({
-      particleCount: 50,
-      spread: 50,
-      origin: { y: 0.7 },
-      colors: ['#CCFF00', '#B5E600', '#FFFFFF'],
-    });
-  };
-
-  // Initialize and update Leaflet Map
+  // Initialize and resize Leaflet map
   useEffect(() => {
     if (!mapContainerRef.current) return;
 
@@ -72,7 +69,7 @@ export default function App() {
         maxZoom: 19,
       }).addTo(map);
 
-      // Clean default user location marker with neon accent
+      // Neon user location pin
       const neonIcon = L.divIcon({
         className: 'custom-neon-marker',
         html: `
@@ -89,7 +86,7 @@ export default function App() {
       userMarker.bindPopup(`
         <div style="text-align: center; padding: 2px;">
           <b style="color: #CCFF00; font-size: 13px;">Tú estás aquí ✨</b>
-          <p style="color: #8A9590; font-size: 11px; margin-top: 2px;">PlanMap en Vivo</p>
+          <p style="color: #8A9590; font-size: 11px; margin-top: 2px;">Planealo Aquí en Vivo</p>
         </div>
       `).openPopup();
 
@@ -105,42 +102,6 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [currentView]);
 
-  // Update map markers when activePlan changes
-  useEffect(() => {
-    if (!mapInstanceRef.current) return;
-
-    markersRef.current.forEach((m) => m.remove());
-    markersRef.current = [];
-
-    if (activePlan) {
-      const planIcon = L.divIcon({
-        className: 'custom-plan-marker',
-        html: `
-          <div style="position: relative; display: flex; flex-direction: column; align-items: center;">
-            <div style="width: 42px; height: 42px; border-radius: 50%; background: #161A18; border: 2.5px solid #CCFF00; box-shadow: 0 4px 14px rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center; font-size: 20px;">
-              ${activePlan.vibe.emoji}
-            </div>
-            <div style="background: rgba(10, 12, 11, 0.9); border: 1px solid rgba(255,255,255,0.1); color: #CCFF00; font-size: 9px; font-weight: 800; padding: 2px 7px; border-radius: 10px; margin-top: 3px; white-space: nowrap;">
-              ${activePlan.title.split(' ')[0]}
-            </div>
-          </div>
-        `,
-        iconSize: [44, 52],
-        iconAnchor: [22, 26],
-      });
-
-      const planMarker = L.marker(activePlan.coordinates, { icon: planIcon }).addTo(mapInstanceRef.current);
-      planMarker.bindPopup(`
-        <div style="text-align: center; padding: 4px;">
-          <b style="color: #FFFFFF; font-size: 13px;">${activePlan.title}</b>
-          <p style="color: #CCFF00; font-size: 11px; font-weight: 700; margin: 4px 0 2px;">Vibe: ${activePlan.vibe.emoji} ${activePlan.vibe.name}</p>
-          <span style="font-size: 10px; color: #8A9590;">${activePlan.locationName}</span>
-        </div>
-      `);
-      markersRef.current.push(planMarker);
-    }
-  }, [activePlan]);
-
   const switchView = (viewId: string) => {
     setCurrentView(viewId);
     if (viewId === 'view-map') {
@@ -153,7 +114,7 @@ export default function App() {
   };
 
   const completeOnboarding = () => {
-    localStorage.setItem('planmap_onboarding_seen', 'true');
+    localStorage.setItem('planealo_onboarding_seen', 'true');
     switchView('view-map');
   };
 
@@ -165,174 +126,147 @@ export default function App() {
     switchView('view-memory');
   };
 
-  const selectVibe = (vibe: Vibe) => {
-    setSelectedVibe(vibe);
+  const selectVibe = (vibeName: string, emoji: string) => {
+    setSelectedVibeText(`${emoji} ${vibeName}`);
   };
 
   const generateInvite = () => {
-    const randomCode = Math.random().toString(36).substring(2, 6);
-    const newPlan: PlanExperience = {
-      id: `plan-${Date.now()}`,
-      title: planTitle.trim() || 'Café y estudio en Casco Antiguo',
-      vibe: selectedVibe,
-      locationName: 'Casco Antiguo · Café Unido',
-      address: 'Av. A y Calle 4ta, San Felipe',
-      city: 'Panamá',
-      coordinates: [8.9824, -79.5199],
-      date: 'Hoy, 6 Noviembre',
-      time: '4:30 PM - 6:30 PM',
-      inviteCode: `planealo-aqui.netlify.app/join/${randomCode}`,
-      status: 'active',
-      participants: [
-        {
-          id: 'u-1',
-          name: 'Tú',
-          avatar: '👤',
-          role: 'organizer',
-          status: 'arrived',
-          lat: 8.9824,
-          lng: -79.5199,
-          signature: 'Tú ⚡',
-        },
-        {
-          id: 'u-2',
-          name: 'Sofía R.',
-          avatar: '👩💻',
-          role: 'member',
-          status: 'on_the_way',
-          eta: '5 min',
-          lat: 8.9835,
-          lng: -79.5185,
-          signature: 'Sofía 🌿',
-        },
-        {
-          id: 'u-3',
-          name: 'Mateo V.',
-          avatar: '🧑🎨',
-          role: 'member',
-          status: 'on_the_way',
-          eta: '8 min',
-          lat: 8.9810,
-          lng: -79.5210,
-          signature: 'Mateo 🚲',
-        },
-      ],
-    };
+    const title = planTitle.trim() || 'Plan en grupo';
+    const planId = 'plan_' + Math.random().toString(36).substring(2, 8);
 
-    setPlans((prev) => [newPlan, ...prev]);
-    setActivePlan(newPlan);
+    const planData: PlanData = { title: title, vibe: selectedVibeText };
+    try {
+      localStorage.setItem(planId, JSON.stringify(planData));
+    } catch {
+      // safe fallback
+    }
 
-    const newMemory: PostcardMemory = {
-      id: `mem-${Date.now()}`,
-      campfireId: newPlan.id,
-      title: newPlan.title,
-      vibeEmoji: newPlan.vibe.emoji,
-      vibeName: newPlan.vibe.name,
-      date: '6 de Noviembre, 2026',
-      city: 'Ciudad de Panamá',
-      location: 'Panamá',
-      heroImage: 'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?auto=format&fit=crop&w=800&q=80',
-      quote: '“Un espacio libre de ruido para conectar de verdad.”',
-      theme: 'twilight',
-      stampText: 'PANAMÁ · PLANMAP DARK PRO',
-      attendees: [
-        { name: 'Tú', avatar: '👤', signature: 'Tú ⚡' },
-        { name: 'Sofía', avatar: '👩💻', signature: 'Sofía R.' },
-        { name: 'Mateo', avatar: '🧑🎨', signature: 'Mateo V.' },
-      ],
-    };
+    setInviteSubtitle(`Vibe: ${selectedVibeText} · ${title}`);
+    setPostalTitle(title);
 
-    setMemories((prev) => [newMemory, ...prev]);
-    setActiveMemory(newMemory);
+    const currentDomain = (typeof window !== 'undefined' && window.location.host) || 'planealo-aqui.netlify.app';
+    const newInviteUrl = `https://${currentDomain}/?plan=${planId}`;
+    setInviteUrl(newInviteUrl);
 
     switchView('view-invite');
   };
 
-  const handleCopyLink = () => {
-    const rawCode = activePlan?.inviteCode || 'planealo-aqui.netlify.app/join/x9f2';
-    const fullUrl = rawCode.startsWith('http') ? rawCode : `https://${rawCode}`;
-    navigator.clipboard.writeText(fullUrl);
-    setCopiedLink(true);
-    setTimeout(() => setCopiedLink(false), 2200);
+  const loadSharedPlan = (planId: string) => {
+    try {
+      const savedData = localStorage.getItem(planId);
+      if (savedData) {
+        const plan: PlanData = JSON.parse(savedData);
+        setInviteSubtitle(`Vibe: ${plan.vibe} · ${plan.title}`);
+        setPostalTitle(plan.title);
+        setPlanTitle(plan.title);
+        setSelectedVibeText(plan.vibe);
+      } else {
+        setInviteSubtitle('Vibe: ☕ Chill · Café en grupo');
+      }
+    } catch {
+      setInviteSubtitle('Vibe: ☕ Chill · Café en grupo');
+    }
+    const currentDomain = (typeof window !== 'undefined' && window.location.host) || 'planealo-aqui.netlify.app';
+    setInviteUrl(`https://${currentDomain}/?plan=${planId}`);
   };
 
-  const handleSavePostal = async () => {
-    setIsSavingPostal(true);
+  const joinAsGuest = () => {
+    setGuestJoined(true);
     confetti({
       particleCount: 60,
       spread: 60,
       origin: { y: 0.7 },
       colors: ['#CCFF00', '#B5E600', '#FFFFFF', '#161A18'],
     });
+  };
+
+  const copyInviteLink = () => {
+    navigator.clipboard
+      .writeText(inviteUrl)
+      .then(() => {
+        alert('¡Enlace copiado al portapapeles!');
+      })
+      .catch(() => {
+        alert('Enlace listo: ' + inviteUrl);
+      });
+  };
+
+  const shareOnWhatsApp = () => {
+    const message = encodeURIComponent(`¡Únete al plan en Planealo Aquí! Entra aquí para coordinar: ${inviteUrl}`);
+    window.open(`https://api.whatsapp.com/send?text=${message}`, '_blank');
+  };
+
+  const handleSavePostal = async () => {
+    alert('¡Postal guardada!');
     try {
-      await downloadPostcardAsImage(activeMemory);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setIsSavingPostal(false);
+      const memory: PostcardMemory = {
+        id: `postal-${Date.now()}`,
+        campfireId: 'planealo-active',
+        title: postalTitle,
+        vibeEmoji: selectedVibeText.split(' ')[0] || '☕',
+        vibeName: selectedVibeText.split(' ')[1] || 'Chill',
+        date: '6 de Noviembre, 2026',
+        city: 'Ciudad de Panamá',
+        location: 'Panamá',
+        heroImage: 'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?auto=format&fit=crop&w=800&q=80',
+        quote: '“Un espacio libre de ruido para conectar de verdad.”',
+        theme: 'twilight',
+        stampText: 'PANAMÁ · PLANEALO AQUÍ',
+        attendees: [
+          { name: 'Tú', avatar: '👤', signature: 'Tú ⚡' },
+          { name: 'Sofía', avatar: '👩💻', signature: 'Sofía R.' },
+          { name: 'Mateo', avatar: '🧑🎨', signature: 'Mateo V.' },
+        ],
+      };
+      await downloadPostcardAsImage(memory);
+    } catch {
+      // safe fallback
     }
   };
 
-  const handleSharePostal = async () => {
+  const handleSharePostal = () => {
+    alert('¡Abriendo menú para compartir!');
     if (navigator.share) {
-      try {
-        await navigator.share({
-          title: `Postal Colectiva: ${activeMemory.title}`,
-          text: `${activeMemory.title} · ${activeMemory.quote}`,
-          url: window.location.href,
-        });
-        return;
-      } catch {
-        // Fallback
-      }
+      navigator
+        .share({
+          title: `Postal Colectiva: ${postalTitle}`,
+          text: `“Un espacio libre de ruido para conectar de verdad.” - Planealo Aquí`,
+          url: inviteUrl,
+        })
+        .catch(() => {});
     }
-    navigator.clipboard.writeText(`💌 Postal Colectiva PlanMap: "${activeMemory.title}"\n${activeMemory.quote}`);
-    alert('¡Enlace copiado al portapapeles!');
   };
 
   return (
     <div className="min-h-screen bg-[#030404] flex justify-center items-center overflow-hidden w-full select-none">
-      <div
-        id="app"
-        className="bg-[#0A0C0B] w-full max-w-[410px] h-[100dvh] max-h-[850px] relative overflow-hidden shadow-[0_30px_60px_rgba(0,0,0,0.8)] flex flex-col md:rounded-[44px] md:h-[840px] md:border-2 md:border-white/[0.08]"
-      >
+      <div id="app">
         {/* ========================================
-             VISTA 0: BIENVENIDA (PRO UI & RESPONSIVE)
+             VISTA 0: BIENVENIDA
              ======================================== */}
-        <div
-          id="view-welcome"
-          className={`view absolute inset-0 w-full h-full flex flex-col justify-between p-[max(24px,env(safe-area-inset-top))_20px_max(24px,env(safe-area-inset-bottom))_20px] bg-gradient-to-b from-[#111513] to-[#0A0C0B] overflow-y-auto transition-all duration-300 ${
-            currentView === 'view-welcome' ? 'active' : 'hidden'
-          }`}
-        >
+        <div id="view-welcome" className={`view ${currentView === 'view-welcome' ? 'active' : ''}`}>
           <div>
-            <div className="welcome-hero-card w-full h-[300px] min-h-[250px] bg-[#161A18] rounded-[28px] overflow-hidden relative border border-white/[0.08] shadow-[0_16px_32px_rgba(0,0,0,0.4)] shrink-0">
+            <div className="welcome-hero-card">
               <img
                 src="https://images.unsplash.com/photo-1529156069898-49953e39b3ac?auto=format&fit=crop&w=800&q=80"
                 alt="Experiencia compartida"
-                className="welcome-hero-img w-full h-full object-cover filter brightness-[0.85] contrast-[1.05]"
+                className="welcome-hero-img"
               />
-              <div className="hero-gradient-overlay absolute bottom-0 left-0 w-full h-1/2 bg-gradient-to-t from-[#161A18]/90 to-transparent"></div>
+              <div className="hero-gradient-overlay"></div>
             </div>
-            <h1 className="welcome-title text-[clamp(1.8rem,5vw,2.2rem)] font-extrabold leading-[1.15] tracking-[-0.6px] mt-4 text-white">
-              Conecta sin ruido, vive el momento.
-            </h1>
-            <p className="welcome-subtitle text-[0.9rem] text-[#8A9590] mt-2 leading-[1.4]">
+            <h1 className="welcome-title">Conecta sin ruido, vive el momento.</h1>
+            <p className="welcome-subtitle">
               Organiza planes al instante, reúne a tu gente y conserva recuerdos significativos.
             </p>
           </div>
 
-          <div className="mt-5">
-            <button
-              className="btn-neon w-full bg-[#CCFF00] hover:bg-[#B5E600] text-[#0A0C0B] p-4 rounded-[22px] text-[1.05rem] font-extrabold border-none cursor-pointer text-center shadow-[0_10px_30px_rgba(204,255,0,0.25)] active:scale-[0.97] transition-transform duration-150"
-              onClick={completeOnboarding}
-            >
+          <div style={{ marginTop: '20px' }}>
+            <button className="btn-neon" onClick={completeOnboarding}>
               Comenzar
             </button>
-            <p className="text-center text-[0.85rem] text-[#8A9590] mt-3">
+            <p style={{ textAlign: 'center', fontSize: '0.85rem', color: 'var(--text-gray)', marginTop: '12px' }}>
               ¿Ya tienes cuenta?{' '}
               <span
-                className="text-white font-bold cursor-pointer hover:underline"
+                style={{ color: 'var(--text-white)', fontWeight: 700, cursor: 'pointer' }}
                 onClick={completeOnboarding}
               >
                 Iniciar sesión
@@ -344,41 +278,20 @@ export default function App() {
         {/* ========================================
              VISTA 1: MAPA VIVO
              ======================================== */}
-        <div
-          id="view-map"
-          className={`view absolute inset-0 w-full h-full flex flex-col transition-all duration-300 ${
-            currentView === 'view-map' ? 'active' : 'hidden'
-          }`}
-        >
-          {/* Map canvas with dark invert filter */}
-          <div
-            id="map-container"
-            ref={mapContainerRef}
-            className="dark-leaflet-map absolute inset-0 w-full h-full z-1"
-          />
+        <div id="view-map" className={`view ${currentView === 'view-map' ? 'active' : ''}`}>
+          <div id="map-container" ref={mapContainerRef}></div>
 
-        {/* Header flotante */}
-        <div className="map-overlay-top absolute top-0 left-0 w-full p-[max(20px,env(safe-area-inset-top))_20px_20px_20px] flex justify-between items-center z-10 pointer-events-none">
-          <div className="brand-pill-dark pointer-events-auto">PlanMap ⚡</div>
-          <button
-            className="icon-btn-dark pointer-events-auto"
-            onClick={goToMemory}
-            title="Ver Recuerdos Colectivos"
-          >
-            🖼️
-          </button>
-        </div>
+          <div className="map-overlay-top">
+            <div className="brand-pill-dark">Planealo Aquí ⚡</div>
+            <button className="icon-btn-dark" onClick={goToMemory}>
+              🖼️
+            </button>
+          </div>
 
-          {/* Píldora inferior flotante */}
-          <div className="map-overlay-bottom absolute bottom-[max(25px,env(safe-area-inset-bottom))] left-0 w-full px-5 z-10 pointer-events-none">
-            <div
-              className="action-pill-neon pointer-events-auto bg-[#CCFF00] hover:bg-[#B5E600] text-[#0A0C0B] rounded-[32px] p-[16px_22px] flex justify-between items-center cursor-pointer shadow-[0_14px_35px_rgba(204,255,0,0.35)] font-extrabold text-[1.05rem] active:scale-[0.97] transition-transform duration-150"
-              onClick={goToCreatePlan}
-            >
+          <div className="map-overlay-bottom">
+            <div className="action-pill-neon" onClick={goToCreatePlan}>
               <span>¿Cuál es el plan hoy?</span>
-              <div className="action-arrow-dark w-9 h-9 bg-[#0A0C0B]/12 rounded-full flex items-center justify-center text-base">
-                →
-              </div>
+              <div className="action-arrow-dark">→</div>
             </div>
           </div>
         </div>
@@ -386,62 +299,69 @@ export default function App() {
         {/* ========================================
              VISTA 2: CREAR PLAN
              ======================================== */}
-        <div
-          id="view-create"
-          className={`solid-view absolute inset-0 w-full h-full p-[max(24px,env(safe-area-inset-top))_20px_max(24px,env(safe-area-inset-bottom))_20px] bg-[#0A0C0B] z-20 flex flex-col overflow-y-auto transition-all duration-250 ${
-            currentView === 'view-create' ? 'active' : 'hidden'
-          }`}
-        >
-          <div className="flex justify-between items-center mb-3">
+        <div id="view-create" className={`solid-view ${currentView === 'view-create' ? 'active' : ''}`}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
             <h3
-              className="cursor-pointer text-[0.95rem] text-[#8A9590] hover:text-white transition-colors"
+              style={{ cursor: 'pointer', fontSize: '0.95rem', color: 'var(--text-gray)' }}
               onClick={() => switchView('view-map')}
             >
               ← Cancelar
             </h3>
-            <span className="font-extrabold text-[#CCFF00] text-[0.9rem]">Paso 1 de 2</span>
+            <span style={{ fontWeight: 800, color: 'var(--accent-neon)', fontSize: '0.9rem' }}>Paso 1 de 2</span>
           </div>
+          <h1>Nuevo Plan</h1>
+          <p className="subtitle">Define la vibra y el propósito del encuentro.</p>
 
-          <h1 className="text-[1.7rem] font-extrabold text-white mb-1 tracking-[-0.5px]">Nuevo Plan</h1>
-          <p className="subtitle text-[0.9rem] text-[#8A9590] mb-5">Define la vibra y el propósito del encuentro.</p>
-
-          <div className="mb-4">
-            <label className="text-[0.85rem] font-bold block mb-1.5 text-white">¿Qué van a hacer?</label>
+          <div style={{ marginBottom: '16px' }}>
+            <label
+              style={{
+                fontSize: '0.85rem',
+                fontWeight: 700,
+                display: 'block',
+                marginBottom: '6px',
+                color: 'var(--text-white)',
+              }}
+            >
+              ¿Qué van a hacer?
+            </label>
             <input
               type="text"
               id="plan-title"
-              className="input-dark w-full p-4 rounded-[18px] border border-white/[0.08] bg-[#161A18] text-white text-base outline-none focus:border-[#CCFF00] transition-colors"
+              className="input-dark"
               value={planTitle}
               onChange={(e) => setPlanTitle(e.target.value)}
             />
           </div>
 
-          <label className="text-[0.85rem] font-bold block mb-2.5 text-white">Selecciona la Vibe</label>
-          <div className="vibe-grid grid grid-cols-2 gap-2.5 mb-5">
-            {VIBES.map((vibe) => {
-              const isSelected = selectedVibe.id === vibe.id;
+          <label
+            style={{
+              fontSize: '0.85rem',
+              fontWeight: 700,
+              display: 'block',
+              marginBottom: '10px',
+              color: 'var(--text-white)',
+            }}
+          >
+            Selecciona la Vibe
+          </label>
+          <div className="vibe-grid">
+            {VIBE_OPTIONS.map((v) => {
+              const isSelected = selectedVibeText.includes(v.name);
               return (
                 <div
-                  key={vibe.id}
-                  onClick={() => selectVibe(vibe)}
-                  className={`vibe-option-dark bg-[#161A18] border-2 rounded-[20px] p-[16px_10px] text-center cursor-pointer transition-all duration-200 ${
-                    isSelected
-                      ? 'selected border-[#CCFF00] bg-[rgba(204,255,0,0.06)]'
-                      : 'border-white/[0.08] hover:border-white/[0.2]'
-                  }`}
+                  key={v.name}
+                  className={`vibe-option-dark ${isSelected ? 'selected' : ''}`}
+                  onClick={() => selectVibe(v.name, v.emoji)}
                 >
-                  <div className="vibe-emoji text-[2rem] mb-1.5">{vibe.emoji}</div>
-                  <div className="vibe-name font-bold text-[0.9rem] text-white">{vibe.name}</div>
+                  <div className="vibe-emoji">{v.emoji}</div>
+                  <div className="vibe-name">{v.name}</div>
                 </div>
               );
             })}
           </div>
 
-          <div className="view-footer mt-auto pt-2.5">
-            <button
-              className="btn-neon w-full bg-[#CCFF00] hover:bg-[#B5E600] text-[#0A0C0B] p-4 rounded-[22px] text-[1.05rem] font-extrabold border-none cursor-pointer text-center shadow-[0_10px_30px_rgba(204,255,0,0.25)] active:scale-[0.97] transition-transform duration-150"
-              onClick={generateInvite}
-            >
+          <div className="view-footer">
+            <button className="btn-neon" onClick={generateInvite}>
               Armar enlace de invitación
             </button>
           </div>
@@ -450,37 +370,61 @@ export default function App() {
         {/* ========================================
              VISTA 3: SALA DE INVITACIÓN
              ======================================== */}
-        <div
-          id="view-invite"
-          className={`solid-view absolute inset-0 w-full h-full p-[max(24px,env(safe-area-inset-top))_20px_max(24px,env(safe-area-inset-bottom))_20px] bg-[#0A0C0B] z-20 flex flex-col overflow-y-auto transition-all duration-250 ${
-            currentView === 'view-invite' ? 'active' : 'hidden'
-          }`}
-        >
+        <div id="view-invite" className={`solid-view ${currentView === 'view-invite' ? 'active' : ''}`}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-            <h3 style={{ cursor: 'pointer', fontSize: '0.95rem', color: 'var(--text-gray)' }} onClick={() => switchView('view-map')}>
+            <h3
+              style={{ cursor: 'pointer', fontSize: '0.95rem', color: 'var(--text-gray)' }}
+              onClick={() => switchView('view-map')}
+            >
               ← Cerrar
             </h3>
-            <span style={{ fontSize: '0.85rem', background: 'rgba(204,255,0,0.1)', color: 'var(--accent-neon)', padding: '6px 12px', borderRadius: '12px', fontWeight: 800 }}>
+            <span
+              style={{
+                fontSize: '0.85rem',
+                background: 'rgba(204,255,0,0.1)',
+                color: 'var(--accent-neon)',
+                padding: '6px 12px',
+                borderRadius: '12px',
+                fontWeight: 800,
+              }}
+            >
               Plan Activo
             </span>
           </div>
-
           <h1>¡Plan listo para rodar! 🔥</h1>
-          <p className="subtitle" id="invite-subtitle">Vibe: {selectedVibe.emoji} {selectedVibe.name}</p>
+          <p className="subtitle" id="invite-subtitle">
+            {inviteSubtitle}
+          </p>
 
           <div className="card-dark" style={{ textAlign: 'center', border: '2px dashed var(--accent-neon)' }}>
-            <p style={{ fontSize: '0.85rem', color: 'var(--text-gray)', marginBottom: '6px' }}>Enlace rápido para compartir</p>
-            <h3 id="invite-url-text" style={{ color: 'var(--accent-neon)', marginBottom: '12px', fontSize: '1.1rem', wordBreak: 'break-all' }}>
-              planealo-aqui.netlify.app/?plan=active
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-gray)', marginBottom: '6px' }}>
+              Enlace rápido para compartir
+            </p>
+            <h3
+              id="invite-url-text"
+              style={{
+                color: 'var(--accent-neon)',
+                marginBottom: '12px',
+                fontSize: '1.1rem',
+                wordBreak: 'break-all',
+              }}
+            >
+              {inviteUrl.replace(/^https?:\/\//, '')}
             </h3>
-            
+
             <div style={{ display: 'flex', gap: '8px' }}>
               <button
                 className="input-dark"
-                style={{ padding: '10px', fontSize: '0.85rem', textAlign: 'center', cursor: 'pointer', background: 'var(--bg-dark)' }}
+                style={{
+                  padding: '10px',
+                  fontSize: '0.85rem',
+                  textAlign: 'center',
+                  cursor: 'pointer',
+                  background: 'var(--bg-dark)',
+                }}
                 onClick={copyInviteLink}
               >
-                {copiedLink ? '✓ Copiado' : 'Copiar Enlace'}
+                Copiar Enlace
               </button>
               <button
                 className="btn-whatsapp"
@@ -493,28 +437,61 @@ export default function App() {
           </div>
 
           <div className="card-dark">
-            <h4 style={{ fontSize: '0.95rem', marginBottom: '8px', color: 'var(--text-white)' }}>Amigos en camino ({3 + (guestJoined ? 1 : 0)})</h4>
+            <h4 style={{ fontSize: '0.95rem', marginBottom: '8px', color: 'var(--text-white)' }}>
+              Amigos en camino ({3 + (guestJoined ? 1 : 0)})
+            </h4>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.85rem' }}>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  fontSize: '0.85rem',
+                }}
+              >
                 <span style={{ color: 'var(--text-white)' }}>
-                  👤 Tú <span style={{ background: 'rgba(204,255,0,0.15)', color: 'var(--accent-neon)', padding: '2px 6px', borderRadius: '6px', fontSize: '0.7rem' }}>Host</span>
+                  👤 Tú{' '}
+                  <span
+                    style={{
+                      background: 'rgba(204,255,0,0.15)',
+                      color: 'var(--accent-neon)',
+                      padding: '2px 6px',
+                      borderRadius: '6px',
+                      fontSize: '0.7rem',
+                    }}
+                  >
+                    Host
+                  </span>
                 </span>
                 <span style={{ color: '#ff6b6b' }}>📍 En el punto</span>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.85rem' }}>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  fontSize: '0.85rem',
+                }}
+              >
                 <span style={{ color: 'var(--text-gray)' }}>👩💻 Sofía R.</span>
-                <span style={{ color: 'var(--accent-neon)' }} id="status-sofia">🚀 En camino (5 min)</span>
+                <span
+                  style={{ color: guestJoined ? '#CCFF00' : 'var(--accent-neon)' }}
+                  id="status-sofia"
+                >
+                  {guestJoined ? '✅ ¡Ya vas en camino!' : '🚀 En camino (5 min)'}
+                </span>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.85rem' }}>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  fontSize: '0.85rem',
+                }}
+              >
                 <span style={{ color: 'var(--text-gray)' }}>🧑🎨 Mateo V.</span>
                 <span style={{ color: 'var(--accent-neon)' }}>🚀 En camino (8 min)</span>
               </div>
-              {guestJoined && (
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.85rem' }}>
-                  <span style={{ color: 'var(--text-white)' }}>🏃♂️ Tú como Invitado</span>
-                  <span style={{ color: 'var(--accent-neon)' }}>🚀 En camino (~5 min)</span>
-                </div>
-              )}
             </div>
           </div>
 
@@ -523,9 +500,14 @@ export default function App() {
               className="btn-neon"
               onClick={joinAsGuest}
               id="join-btn"
-              style={{ marginBottom: '10px', display: isGuestMode || guestJoined ? 'flex' : 'none' }}
+              disabled={guestJoined}
+              style={{
+                marginBottom: '10px',
+                display: isGuestMode || guestJoined ? 'block' : 'none',
+                opacity: guestJoined ? 0.7 : 1,
+              }}
             >
-              {guestJoined ? '¡Estás en camino! 🏃♂️' : '¡Voy en camino! 🏃♂️'}
+              {guestJoined ? '¡Conectado al Plan! 🚀' : '¡Voy en camino! 🏃♂️'}
             </button>
             <button className="btn-neon" onClick={() => switchView('view-map')}>
               Ver Mapa en Vivo
@@ -536,50 +518,46 @@ export default function App() {
         {/* ========================================
              VISTA 4: RECUERDO / POSTAL
              ======================================== */}
-        <div
-          id="view-memory"
-          className={`solid-view absolute inset-0 w-full h-full p-[max(24px,env(safe-area-inset-top))_20px_max(24px,env(safe-area-inset-bottom))_20px] bg-[#0A0C0B] z-20 flex flex-col overflow-y-auto transition-all duration-250 ${
-            currentView === 'view-memory' ? 'active' : 'hidden'
-          }`}
-        >
-          <div className="flex justify-between items-center mb-3">
+        <div id="view-memory" className={`solid-view ${currentView === 'view-memory' ? 'active' : ''}`}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
             <h3
-              className="cursor-pointer text-[0.95rem] text-[#8A9590] hover:text-white transition-colors"
+              style={{ cursor: 'pointer', fontSize: '0.95rem', color: 'var(--text-gray)' }}
               onClick={() => switchView('view-map')}
             >
               ← Volver al Mapa
             </h3>
-            <span className="font-extrabold text-white text-[0.9rem]">Recuerdo Colectivo</span>
+            <span style={{ fontWeight: 800, color: 'var(--text-white)' }}>Recuerdo Colectivo</span>
           </div>
 
-          <div className="postal-card-dark bg-gradient-to-br from-[#161A18] to-[#0A0C0B] text-white p-6 rounded-[28px] text-center mb-4 border border-white/[0.08] shadow-[0_16px_35px_rgba(0,0,0,0.5)]">
-            <div className="postal-img-placeholder w-full h-[150px] bg-white/[0.03] rounded-[18px] flex items-center justify-center text-[3rem] mb-3.5 border border-white/[0.08]">
-              🌅
-            </div>
-            <h3 className="mb-1 text-[1.3rem] font-extrabold" id="postal-title">
-              {activeMemory.title || 'Café y Estudio en Casco'}
+          <div className="postal-card-dark">
+            <div className="postal-img-placeholder">🌅</div>
+            <h3 style={{ marginBottom: '4px', fontSize: '1.3rem' }} id="postal-title">
+              {postalTitle}
             </h3>
-            <p className="text-[0.85rem] text-[#8A9590]">Panamá · 6 de Noviembre, 2026</p>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-gray)' }}>Panamá · 6 de Noviembre, 2026</p>
           </div>
 
-          <div className="card-dark bg-[#161A18] rounded-[24px] p-5 shadow-[0_8px_24px_rgba(0,0,0,0.3)] mb-3.5 border border-white/[0.08]">
-            <p className="text-[0.9rem] italic text-center text-[#8A9590] leading-relaxed">
+          <div className="card-dark">
+            <p style={{ fontSize: '0.9rem', fontStyle: 'italic', textAlign: 'center', color: 'var(--text-gray)' }}>
               “Un espacio libre de ruido para conectar de verdad.”
             </p>
           </div>
 
-          <div className="view-footer mt-auto pt-2.5 flex gap-2.5">
+          <div className="view-footer" style={{ display: 'flex', gap: '10px' }}>
             <button
-              className="input-dark flex-1 text-center cursor-pointer font-bold bg-[#161A18] hover:bg-[#222825] p-3.5 rounded-[18px] text-white border border-white/[0.08] transition-colors"
+              className="input-dark"
+              style={{
+                flex: 1,
+                textAlign: 'center',
+                cursor: 'pointer',
+                fontWeight: 700,
+                background: 'var(--card-dark)',
+              }}
               onClick={handleSavePostal}
-              disabled={isSavingPostal}
             >
-              {isSavingPostal ? 'Guardando...' : 'Guardar'}
+              Guardar
             </button>
-            <button
-              className="btn-neon flex-1 p-3.5 rounded-[18px] text-[0.95rem] font-extrabold border-none cursor-pointer shadow-md active:scale-[0.97]"
-              onClick={handleSharePostal}
-            >
+            <button className="btn-neon" style={{ flex: 1, marginTop: 0 }} onClick={handleSharePostal}>
               Compartir
             </button>
           </div>
