@@ -29,6 +29,34 @@ export default function App() {
   // UI state
   const [copiedLink, setCopiedLink] = useState(false);
   const [isSavingPostal, setIsSavingPostal] = useState(false);
+  const [isGuestMode, setIsGuestMode] = useState<boolean>(() => {
+    return typeof window !== 'undefined' && window.location.search.includes('plan=');
+  });
+  const [guestJoined, setGuestJoined] = useState(false);
+
+  const copyInviteLink = () => {
+    const url = "https://planealo-aqui.netlify.app/?plan=active";
+    navigator.clipboard.writeText(url);
+    setCopiedLink(true);
+    setTimeout(() => setCopiedLink(false), 2200);
+  };
+
+  const shareOnWhatsApp = () => {
+    const text = encodeURIComponent(
+      `¡Súmate al plan en PlanMap! 🔥 "${activePlan.title}" en ${activePlan.locationName}. Únete aquí: https://planealo-aqui.netlify.app/?plan=active`
+    );
+    window.open(`https://wa.me/?text=${text}`, '_blank');
+  };
+
+  const joinAsGuest = () => {
+    setGuestJoined(true);
+    confetti({
+      particleCount: 50,
+      spread: 50,
+      origin: { y: 0.7 },
+      colors: ['#CCFF00', '#B5E600', '#FFFFFF'],
+    });
+  };
 
   // Initialize and update Leaflet Map
   useEffect(() => {
@@ -329,30 +357,17 @@ export default function App() {
             className="dark-leaflet-map absolute inset-0 w-full h-full z-1"
           />
 
-          {/* Header flotante */}
-          <div className="map-overlay-top absolute top-0 left-0 w-full p-[max(20px,env(safe-area-inset-top))_20px_20px_20px] flex justify-between items-center z-10 pointer-events-none">
-            <div className="brand-pill-dark pointer-events-auto bg-[#161A18]/85 backdrop-blur-[16px] px-[18px] py-[10px] rounded-[30px] font-extrabold text-base text-white border border-white/[0.08] shadow-[0_8px_24px_rgba(0,0,0,0.4)] flex items-center gap-1.5">
-              <span>PlanMap</span>
-              <span className="text-[#CCFF00]">⚡</span>
-            </div>
-
-            <div className="flex items-center gap-2 pointer-events-auto">
-              <button
-                className="icon-btn-dark w-[46px] h-[46px] bg-[#161A18]/85 backdrop-blur-[16px] rounded-full flex items-center justify-center text-[1.2rem] text-white border border-white/[0.08] shadow-[0_8px_24px_rgba(0,0,0,0.4)] cursor-pointer hover:bg-[#222825] active:scale-95 transition-all"
-                onClick={() => switchView('view-welcome')}
-                title="Ver Bienvenida"
-              >
-                🏠
-              </button>
-              <button
-                className="icon-btn-dark w-[46px] h-[46px] bg-[#161A18]/85 backdrop-blur-[16px] rounded-full flex items-center justify-center text-[1.2rem] text-white border border-white/[0.08] shadow-[0_8px_24px_rgba(0,0,0,0.4)] cursor-pointer hover:bg-[#222825] active:scale-95 transition-all"
-                onClick={goToMemory}
-                title="Ver Recuerdos Colectivos"
-              >
-                🖼️
-              </button>
-            </div>
-          </div>
+        {/* Header flotante */}
+        <div className="map-overlay-top absolute top-0 left-0 w-full p-[max(20px,env(safe-area-inset-top))_20px_20px_20px] flex justify-between items-center z-10 pointer-events-none">
+          <div className="brand-pill-dark pointer-events-auto">PlanMap ⚡</div>
+          <button
+            className="icon-btn-dark pointer-events-auto"
+            onClick={goToMemory}
+            title="Ver Recuerdos Colectivos"
+          >
+            🖼️
+          </button>
+        </div>
 
           {/* Píldora inferior flotante */}
           <div className="map-overlay-bottom absolute bottom-[max(25px,env(safe-area-inset-bottom))] left-0 w-full px-5 z-10 pointer-events-none">
@@ -441,95 +456,79 @@ export default function App() {
             currentView === 'view-invite' ? 'active' : 'hidden'
           }`}
         >
-          <div className="flex justify-between items-center mb-3">
-            <h3
-              className="cursor-pointer text-[0.95rem] text-[#8A9590] hover:text-white transition-colors"
-              onClick={() => switchView('view-map')}
-            >
-              ✕ Cerrar
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+            <h3 style={{ cursor: 'pointer', fontSize: '0.95rem', color: 'var(--text-gray)' }} onClick={() => switchView('view-map')}>
+              ← Cerrar
             </h3>
-            <span className="text-[0.85rem] bg-[rgba(204,255,0,0.1)] text-[#CCFF00] px-3 py-1.5 rounded-xl font-extrabold border border-[#CCFF00]/20">
+            <span style={{ fontSize: '0.85rem', background: 'rgba(204,255,0,0.1)', color: 'var(--accent-neon)', padding: '6px 12px', borderRadius: '12px', fontWeight: 800 }}>
               Plan Activo
             </span>
           </div>
 
-          <h1 className="text-[1.7rem] font-extrabold text-white mb-1 tracking-[-0.5px]">¡Plan listo para rodar! 🔥</h1>
-          <p className="subtitle text-[0.9rem] text-[#8A9590] mb-5" id="invite-subtitle">
-            Vibe: {selectedVibe.emoji} {selectedVibe.name} · {activePlan?.locationName}
-          </p>
+          <h1>¡Plan listo para rodar! 🔥</h1>
+          <p className="subtitle" id="invite-subtitle">Vibe: {selectedVibe.emoji} {selectedVibe.name}</p>
 
-          <div className="card-dark bg-[#161A18] rounded-[24px] p-5 shadow-[0_8px_24px_rgba(0,0,0,0.3)] mb-3.5 border-2 border-dashed border-[#CCFF00]/70 text-center">
-            <p className="text-[0.85rem] text-[#8A9590] mb-1.5 font-medium">Enlace rápido para compartir</p>
-            <h3 className="text-[#CCFF00] mb-3 text-[1.15rem] font-mono font-bold select-all break-all">
-              {activePlan?.inviteCode || 'planealo-aqui.netlify.app/join/x9f2'}
+          <div className="card-dark" style={{ textAlign: 'center', border: '2px dashed var(--accent-neon)' }}>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-gray)', marginBottom: '6px' }}>Enlace rápido para compartir</p>
+            <h3 id="invite-url-text" style={{ color: 'var(--accent-neon)', marginBottom: '12px', fontSize: '1.1rem', wordBreak: 'break-all' }}>
+              planealo-aqui.netlify.app/?plan=active
             </h3>
-            <div className="flex gap-2">
+            
+            <div style={{ display: 'flex', gap: '8px' }}>
               <button
-                className="btn-neon flex-1 bg-[#CCFF00] hover:bg-[#B5E600] text-[#0A0C0B] p-2.5 rounded-[18px] text-[0.95rem] font-extrabold border-none cursor-pointer shadow-md active:scale-[0.97]"
-                onClick={handleCopyLink}
+                className="input-dark"
+                style={{ padding: '10px', fontSize: '0.85rem', textAlign: 'center', cursor: 'pointer', background: 'var(--bg-dark)' }}
+                onClick={copyInviteLink}
               >
                 {copiedLink ? '✓ Copiado' : 'Copiar Enlace'}
               </button>
-              <a
-                href={`https://wa.me/?text=${encodeURIComponent(
-                  `¡Súmate al plan en PlanMap! 🔥 "${activePlan.title}" en ${activePlan.locationName}. Únete aquí: ${
-                    (activePlan?.inviteCode || 'planealo-aqui.netlify.app/join/x9f2').startsWith('http')
-                      ? activePlan?.inviteCode
-                      : `https://${activePlan?.inviteCode || 'planealo-aqui.netlify.app/join/x9f2'}`
-                  }`
-                )}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="btn-whatsapp px-4 py-2.5 rounded-[18px] text-[0.95rem] font-bold flex items-center justify-center no-underline active:scale-[0.97]"
-                title="Compartir por WhatsApp"
+              <button
+                className="btn-whatsapp"
+                style={{ padding: '10px', fontSize: '0.85rem' }}
+                onClick={shareOnWhatsApp}
               >
                 WhatsApp
-              </a>
+              </button>
             </div>
           </div>
 
-          <div className="card-dark bg-[#161A18] rounded-[24px] p-5 shadow-[0_8px_24px_rgba(0,0,0,0.3)] mb-3.5 border border-white/[0.08]">
-            <div className="flex justify-between items-center mb-3">
-              <h4 className="text-[0.95rem] text-white font-bold">
-                Amigos en camino ({activePlan?.participants.length || 3})
-              </h4>
-              <span className="text-[0.78rem] text-[#CCFF00] font-semibold">● 3 activos</span>
-            </div>
-            <div className="space-y-2.5">
-              {activePlan?.participants.map((p) => (
-                <div key={p.id} className="flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-[34px] h-[34px] rounded-full bg-[#222825] border border-white/[0.08] flex items-center justify-center text-sm">
-                      {p.avatar}
-                    </div>
-                    <div>
-                      <div className="font-bold text-white flex items-center gap-1.5">
-                        {p.name}
-                        {p.role === 'organizer' && (
-                          <span className="text-[9px] bg-[#CCFF00]/15 text-[#CCFF00] px-1.5 py-0.5 rounded-md font-bold">
-                            Host
-                          </span>
-                        )}
-                      </div>
-                      <div className="text-[11px] text-[#8A9590]">
-                        {p.status === 'arrived' ? 'En el punto de encuentro' : `En camino · Llega en ${p.eta || 'unos min'}`}
-                      </div>
-                    </div>
-                  </div>
-                  <span className="text-[11px] font-bold text-[#8A9590]">
-                    {p.status === 'arrived' ? '📍 Llegó' : '🚲 En ruta'}
-                  </span>
+          <div className="card-dark">
+            <h4 style={{ fontSize: '0.95rem', marginBottom: '8px', color: 'var(--text-white)' }}>Amigos en camino ({3 + (guestJoined ? 1 : 0)})</h4>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.85rem' }}>
+                <span style={{ color: 'var(--text-white)' }}>
+                  👤 Tú <span style={{ background: 'rgba(204,255,0,0.15)', color: 'var(--accent-neon)', padding: '2px 6px', borderRadius: '6px', fontSize: '0.7rem' }}>Host</span>
+                </span>
+                <span style={{ color: '#ff6b6b' }}>📍 En el punto</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.85rem' }}>
+                <span style={{ color: 'var(--text-gray)' }}>👩💻 Sofía R.</span>
+                <span style={{ color: 'var(--accent-neon)' }} id="status-sofia">🚀 En camino (5 min)</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.85rem' }}>
+                <span style={{ color: 'var(--text-gray)' }}>🧑🎨 Mateo V.</span>
+                <span style={{ color: 'var(--accent-neon)' }}>🚀 En camino (8 min)</span>
+              </div>
+              {guestJoined && (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.85rem' }}>
+                  <span style={{ color: 'var(--text-white)' }}>🏃♂️ Tú como Invitado</span>
+                  <span style={{ color: 'var(--accent-neon)' }}>🚀 En camino (~5 min)</span>
                 </div>
-              ))}
+              )}
             </div>
           </div>
 
-          <div className="view-footer mt-auto pt-2.5">
+          <div className="view-footer">
             <button
-              className="btn-neon w-full bg-[#CCFF00] hover:bg-[#B5E600] text-[#0A0C0B] p-4 rounded-[22px] text-[1.05rem] font-extrabold border-none cursor-pointer text-center shadow-[0_10px_30px_rgba(204,255,0,0.25)] active:scale-[0.97] transition-transform duration-150"
-              onClick={() => switchView('view-map')}
+              className="btn-neon"
+              onClick={joinAsGuest}
+              id="join-btn"
+              style={{ marginBottom: '10px', display: isGuestMode || guestJoined ? 'flex' : 'none' }}
             >
-              Volver al Mapa
+              {guestJoined ? '¡Estás en camino! 🏃♂️' : '¡Voy en camino! 🏃♂️'}
+            </button>
+            <button className="btn-neon" onClick={() => switchView('view-map')}>
+              Ver Mapa en Vivo
             </button>
           </div>
         </div>
