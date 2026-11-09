@@ -4,6 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Planealo Aquí - Experiencias Compartidas</title>
+    <!-- PWA Config -->
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#CCFF00">
     <!-- Tipografía moderna -->
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <!-- Leaflet.js para el mapa base -->
@@ -194,7 +197,6 @@
             box-shadow: 0 8px 24px rgba(0,0,0,0.4);
         }
 
-        /* Píldora flotante del Host para ver el plan activo sin salir del mapa */
         .active-plan-pill {
             background: rgba(22, 26, 24, 0.9);
             backdrop-filter: blur(16px);
@@ -334,9 +336,7 @@
 <body>
 
 <div id="app">
-    <!-- ========================================
-         VISTA 0: BIENVENIDA
-         ======================================== -->
+    <!-- VISTA 0: BIENVENIDA -->
     <div id="view-welcome" class="view">
         <div>
             <div class="welcome-hero-card">
@@ -353,9 +353,7 @@
         </div>
     </div>
 
-    <!-- ========================================
-         VISTA 1: MAPA VIVO Y CENTRO DE MANDO
-         ======================================== -->
+    <!-- VISTA 1: MAPA VIVO Y CENTRO DE MANDO -->
     <div id="view-map" class="view">
         <div id="map-container"></div>
 
@@ -364,13 +362,12 @@
                 <div class="brand-pill-dark">Planealo Aquí ⚡</div>
                 <button class="icon-btn-dark" onclick="goToMemory()">🖼️</button>
             </div>
-            <!-- Píldora flotante para que el Host supervise su plan activo en cualquier momento -->
             <div class="active-plan-pill" id="map-plan-pill" onclick="openActivePlan()" style="display: none;">
                 <div>
                     <span style="font-size: 0.75rem; color: var(--accent-neon); font-weight: 800; display: block;">⚡ PLAN ACTIVO</span>
                     <span style="font-size: 0.9rem; font-weight: 700; color: var(--text-white);" id="map-pill-title">Café en Casco</span>
                 </div>
-                <span style="font-size: 0.85rem; background: rgba(204,255,0,0.15); color: var(--accent-neon); padding: 4px 10px; border-radius: 12px; font-weight: 800;" id="map-pill-count">4 en camino →</span>
+                <span style="font-size: 0.85rem; background: rgba(204,255,0,0.15); color: var(--accent-neon); padding: 4px 10px; border-radius: 12px; font-weight: 800;" id="map-pill-count">3 en camino →</span>
             </div>
         </div>
 
@@ -382,9 +379,7 @@
         </div>
     </div>
 
-    <!-- ========================================
-         VISTA 2: CREAR PLAN
-         ======================================== -->
+    <!-- VISTA 2: CREAR PLAN -->
     <div id="view-create" class="solid-view">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
             <h3 style="cursor: pointer; font-size: 0.95rem; color: var(--text-gray);" onclick="switchView('view-map')">← Cancelar</h3>
@@ -423,9 +418,7 @@
         </div>
     </div>
 
-    <!-- ========================================
-         VISTA 3: SALA DE INVITACIÓN / CENTRO DE CONTROL
-         ======================================== -->
+    <!-- VISTA 3: SALA DE INVITACIÓN / CENTRO DE CONTROL -->
     <div id="view-invite" class="solid-view">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
             <h3 style="cursor: pointer; font-size: 0.95rem; color: var(--text-gray);" onclick="switchView('view-map')">← Volver al Mapa</h3>
@@ -468,9 +461,7 @@
         </div>
     </div>
 
-    <!-- ========================================
-         VISTA 4: RECUERDO / POSTAL
-         ======================================== -->
+    <!-- VISTA 4: RECUERDO / POSTAL -->
     <div id="view-memory" class="solid-view">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
             <h3 style="cursor: pointer; font-size: 0.95rem; color: var(--text-gray);" onclick="switchView('view-map')">← Volver al Mapa</h3>
@@ -499,9 +490,9 @@
     let selectedVibeText = '☕ Chill';
     let fullInviteUrl = '';
     let currentPlanData = { title: 'Café y estudio en Casco Antiguo', vibe: '☕ Chill' };
+    let participantCount = 3;
 
     window.addEventListener('DOMContentLoaded', () => {
-        // Inicializar mapa de Leaflet
         map = L.map('map-container', { zoomControl: false }).setView([8.9824, -79.5199], 15);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '© OpenStreetMap'
@@ -510,7 +501,6 @@
         L.marker([8.9824, -79.5199]).addTo(map)
             .bindPopup('Tú estás aquí ✨');
 
-        // GESTIÓN INTELIGENTE DE ENLACES Y MEMORIA DE PLAN ACTIVO
         const urlParams = new URLSearchParams(window.location.search);
         const planTitleParam = urlParams.get('t');
         const planVibeParam = urlParams.get('v');
@@ -518,7 +508,6 @@
         const savedActivePlan = localStorage.getItem('planealo_active_plan');
 
         if (planTitleParam) {
-            // El usuario entra como INVITADO mediante enlace
             const decodedTitle = decodeURIComponent(planTitleParam);
             const decodedVibe = planVibeParam ? decodeURIComponent(planVibeParam) : '☕ Chill';
 
@@ -528,7 +517,6 @@
             document.getElementById('join-btn').style.display = 'block';
             switchView('view-invite');
         } else {
-            // Si hay un plan activo guardado en este navegador (como Host), mostrar la píldora en el mapa
             if (savedActivePlan) {
                 currentPlanData = JSON.parse(savedActivePlan);
                 showMapPlanPill(true);
@@ -573,13 +561,11 @@
         const title = document.getElementById('plan-title').value || 'Plan en grupo';
         currentPlanData = { title: title, vibe: selectedVibeText };
 
-        // Guardar como plan activo en localStorage para que el Host lo tenga persistente
         localStorage.setItem('planealo_active_plan', JSON.stringify(currentPlanData));
 
         updateInviteScreen();
         showMapPlanPill(true);
 
-        // Construir el enlace limpio con el dominio actual
         const domain = window.location.host || 'planealo-aqui.netlify.app';
         const encodedTitle = encodeURIComponent(title);
         const encodedVibe = encodeURIComponent(selectedVibeText);
@@ -593,12 +579,14 @@
     function updateInviteScreen() {
         document.getElementById('invite-subtitle').innerText = `Vibe: ${currentPlanData.vibe} · ${currentPlanData.title}`;
         document.getElementById('postal-title').innerText = currentPlanData.title;
+        document.getElementById('participants-title').innerText = `Amigos en camino (${participantCount})`;
     }
 
     function showMapPlanPill(show) {
         const pill = document.getElementById('map-plan-pill');
         if (show) {
             document.getElementById('map-pill-title').innerText = currentPlanData.title;
+            document.getElementById('map-pill-count').innerText = `${participantCount} en camino →`;
             pill.style.display = 'flex';
         } else {
             pill.style.display = 'none';
@@ -606,19 +594,21 @@
     }
 
     function openActivePlan() {
-        // Al tocar la píldora en el mapa, el Host accede directo al panel de control sin recrear nada
         updateInviteScreen();
-        document.getElementById('join-btn').style.display = 'none'; // El host no se auto-invita
+        document.getElementById('join-btn').style.display = 'none';
         switchView('view-invite');
     }
 
     function joinAsGuest() {
+        participantCount = 4;
         document.getElementById('status-sofia').innerText = '✅ ¡Ya vas en camino!';
         document.getElementById('status-sofia').style.color = '#CCFF00';
         document.getElementById('join-btn').innerText = '¡Conectado al Plan! 🚀';
         document.getElementById('join-btn').disabled = true;
         document.getElementById('join-btn').style.opacity = '0.7';
-        document.getElementById('participants-title').innerText = 'Amigos en camino (4)';
+        
+        document.getElementById('participants-title').innerText = `Amigos en camino (${participantCount})`;
+        document.getElementById('map-pill-count').innerText = `${participantCount} en camino →`;
     }
 
     function copyInviteLink() {
@@ -637,6 +627,15 @@
     function goToMemory() {
         switchView('view-memory');
     }
+</script>
+
+<!-- PWA Service Worker Registration -->
+<script>
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js')
+      .then(() => console.log('Service Worker registrado con éxito'))
+      .catch((err) => console.log('Error al registrar Service Worker', err));
+  }
 </script>
 
 </body>

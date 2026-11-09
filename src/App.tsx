@@ -356,7 +356,7 @@ export default function App() {
                   }}
                   id="map-pill-count"
                 >
-                  4 en camino →
+                  {guestJoined ? '4' : '3'} en camino →
                 </span>
               </div>
             )}
