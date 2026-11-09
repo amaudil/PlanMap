@@ -154,7 +154,7 @@
         .btn-whatsapp:active { transform: scale(0.97); }
 
         /* ========================================
-           VISTA 1: MAPA VIVO
+           VISTA 1: MAPA VIVO Y CENTRO DE MANDO
            ======================================== */
         #map-container {
             position: absolute;
@@ -168,12 +168,19 @@
             top: 0; left: 0; width: 100%;
             padding: max(20px, env(safe-area-inset-top)) 20px 20px 20px;
             display: flex;
-            justify-content: space-between;
-            align-items: center;
+            flex-direction: column;
+            gap: 10px;
             z-index: 10;
             pointer-events: none;
         }
         .map-overlay-top > * { pointer-events: auto; }
+
+        .top-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+        }
 
         .brand-pill-dark {
             background: rgba(22, 26, 24, 0.85);
@@ -187,6 +194,22 @@
             box-shadow: 0 8px 24px rgba(0,0,0,0.4);
         }
 
+        /* Píldora flotante del Host para ver el plan activo sin salir del mapa */
+        .active-plan-pill {
+            background: rgba(22, 26, 24, 0.9);
+            backdrop-filter: blur(16px);
+            padding: 12px 18px;
+            border-radius: 20px;
+            border: 1px solid var(--accent-neon);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+            transition: transform 0.15s ease;
+        }
+        .active-plan-pill:active { transform: scale(0.98); }
+
         .icon-btn-dark {
             width: 46px; height: 46px;
             background: rgba(22, 26, 24, 0.85);
@@ -198,6 +221,7 @@
             border: 1px solid var(--card-border);
             color: var(--text-white);
             box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+            flex-shrink: 0;
         }
 
         .map-overlay-bottom {
@@ -330,14 +354,24 @@
     </div>
 
     <!-- ========================================
-         VISTA 1: MAPA VIVO
+         VISTA 1: MAPA VIVO Y CENTRO DE MANDO
          ======================================== -->
     <div id="view-map" class="view">
         <div id="map-container"></div>
 
         <div class="map-overlay-top">
-            <div class="brand-pill-dark">Planealo Aquí ⚡</div>
-            <button class="icon-btn-dark" onclick="goToMemory()">🖼️</button>
+            <div class="top-row">
+                <div class="brand-pill-dark">Planealo Aquí ⚡</div>
+                <button class="icon-btn-dark" onclick="goToMemory()">🖼️</button>
+            </div>
+            <!-- Píldora flotante para que el Host supervise su plan activo en cualquier momento -->
+            <div class="active-plan-pill" id="map-plan-pill" onclick="openActivePlan()" style="display: none;">
+                <div>
+                    <span style="font-size: 0.75rem; color: var(--accent-neon); font-weight: 800; display: block;">⚡ PLAN ACTIVO</span>
+                    <span style="font-size: 0.9rem; font-weight: 700; color: var(--text-white);" id="map-pill-title">Café en Casco</span>
+                </div>
+                <span style="font-size: 0.85rem; background: rgba(204,255,0,0.15); color: var(--accent-neon); padding: 4px 10px; border-radius: 12px; font-weight: 800;" id="map-pill-count">4 en camino →</span>
+            </div>
         </div>
 
         <div class="map-overlay-bottom">
@@ -390,11 +424,11 @@
     </div>
 
     <!-- ========================================
-         VISTA 3: SALA DE INVITACIÓN
+         VISTA 3: SALA DE INVITACIÓN / CENTRO DE CONTROL
          ======================================== -->
     <div id="view-invite" class="solid-view">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-            <h3 style="cursor: pointer; font-size: 0.95rem; color: var(--text-gray);" onclick="switchView('view-map')">← Cerrar</h3>
+            <h3 style="cursor: pointer; font-size: 0.95rem; color: var(--text-gray);" onclick="switchView('view-map')">← Volver al Mapa</h3>
             <span style="font-size: 0.85rem; background: rgba(204,255,0,0.1); color: var(--accent-neon); padding: 6px 12px; border-radius: 12px; font-weight: 800;">Plan Activo</span>
         </div>
         <h1>¡Plan listo para rodar! 🔥</h1>
@@ -402,7 +436,7 @@
 
         <div class="card-dark" style="text-align: center; border: 2px dashed var(--accent-neon);">
             <p style="font-size: 0.85rem; color: var(--text-gray); margin-bottom: 6px;">Enlace rápido para compartir</p>
-            <h3 id="invite-url-text" style="color: var(--accent-neon); margin-bottom: 12px; font-size: 1.1rem; word-break: break-all;">planealo-aqui.netlify.app/?plan=active</h3>
+            <h3 id="invite-url-text" style="color: var(--accent-neon); margin-bottom: 12px; font-size: 0.9rem; word-break: break-all;">planealo-aqui.netlify.app/?t=Plan</h3>
             
             <div style="display: flex; gap: 8px;">
                 <button class="input-dark" style="padding: 10px; font-size: 0.85rem; text-align: center; cursor: pointer; background: var(--bg-dark);" onclick="copyInviteLink()">Copiar Enlace</button>
@@ -411,25 +445,25 @@
         </div>
 
         <div class="card-dark">
-            <h4 style="font-size: 0.95rem; margin-bottom: 8px; color: var(--text-white);">Amigos en camino (3)</h4>
+            <h4 style="font-size: 0.95rem; margin-bottom: 8px; color: var(--text-white);" id="participants-title">Amigos en camino (3)</h4>
             <div style="display: flex; flex-direction: column; gap: 8px;">
                 <div style="display: flex; align-items: center; justify-content: space-between; font-size: 0.85rem;">
                     <span style="color: var(--text-white);">👤 Tú <span style="background: rgba(204,255,0,0.15); color: var(--accent-neon); padding: 2px 6px; border-radius: 6px; font-size: 0.7rem;">Host</span></span>
                     <span style="color: #ff6b6b;">📍 En el punto</span>
                 </div>
                 <div style="display: flex; align-items: center; justify-content: space-between; font-size: 0.85rem;">
-                    <span style="color: var(--text-gray);">👩💻 Sofía R.</span>
+                    <span style="color: var(--text-gray);">👩‍💻 Sofía R.</span>
                     <span style="color: var(--accent-neon);" id="status-sofia">🚀 En camino (5 min)</span>
                 </div>
                 <div style="display: flex; align-items: center; justify-content: space-between; font-size: 0.85rem;">
-                    <span style="color: var(--text-gray);">🧑🎨 Mateo V.</span>
+                    <span style="color: var(--text-gray);">🧑‍🎨 Mateo V.</span>
                     <span style="color: var(--accent-neon);">🚀 En camino (8 min)</span>
                 </div>
             </div>
         </div>
 
         <div class="view-footer">
-            <button class="btn-neon" onclick="joinAsGuest()" id="join-btn" style="margin-bottom: 10px; display: none;">¡Voy en camino! 🏃♂️</button>
+            <button class="btn-neon" onclick="joinAsGuest()" id="join-btn" style="margin-bottom: 10px; display: none;">¡Voy en camino! 🏃‍♂️</button>
             <button class="btn-neon" onclick="switchView('view-map')">Ver Mapa en Vivo</button>
         </div>
     </div>
@@ -462,7 +496,9 @@
 
 <script>
     let map = null;
-    let selectedVibeText = 'Chill';
+    let selectedVibeText = '☕ Chill';
+    let fullInviteUrl = '';
+    let currentPlanData = { title: 'Café y estudio en Casco Antiguo', vibe: '☕ Chill' };
 
     window.addEventListener('DOMContentLoaded', () => {
         // Inicializar mapa de Leaflet
@@ -474,28 +510,35 @@
         L.marker([8.9824, -79.5199]).addTo(map)
             .bindPopup('Tú estás aquí ✨');
 
-        // GESTIÓN INTELIGENTE DE RUTAS POR URL
+        // GESTIÓN INTELIGENTE DE ENLACES Y MEMORIA DE PLAN ACTIVO
         const urlParams = new URLSearchParams(window.location.search);
-        const titleParam = urlParams.get('t');
-        const vibeParam = urlParams.get('v');
-        const planParam = urlParams.get('plan');
+        const planTitleParam = urlParams.get('t');
+        const planVibeParam = urlParams.get('v');
         const seenWelcome = localStorage.getItem('planealo_onboarding_seen');
+        const savedActivePlan = localStorage.getItem('planealo_active_plan');
 
-        if (titleParam || vibeParam) {
-            const planTitle = titleParam ? decodeURIComponent(titleParam) : 'Plan en grupo';
-            const planVibe = vibeParam ? decodeURIComponent(vibeParam) : '☕ Chill';
-            document.getElementById('invite-subtitle').innerText = `Vibe: ${planVibe} · ${planTitle}`;
-            document.getElementById('postal-title').innerText = planTitle;
+        if (planTitleParam) {
+            // El usuario entra como INVITADO mediante enlace
+            const decodedTitle = decodeURIComponent(planTitleParam);
+            const decodedVibe = planVibeParam ? decodeURIComponent(planVibeParam) : '☕ Chill';
+
+            currentPlanData = { title: decodedTitle, vibe: decodedVibe };
+            updateInviteScreen();
+            
             document.getElementById('join-btn').style.display = 'block';
             switchView('view-invite');
-        } else if (planParam) {
-            loadSharedPlan(planParam);
-            document.getElementById('join-btn').style.display = 'block';
-            switchView('view-invite');
-        } else if (seenWelcome) {
-            switchView('view-map');
         } else {
-            switchView('view-welcome');
+            // Si hay un plan activo guardado en este navegador (como Host), mostrar la píldora en el mapa
+            if (savedActivePlan) {
+                currentPlanData = JSON.parse(savedActivePlan);
+                showMapPlanPill(true);
+            }
+
+            if (seenWelcome) {
+                switchView('view-map');
+            } else {
+                switchView('view-welcome');
+            }
         }
     });
 
@@ -528,30 +571,45 @@
 
     function generateInvite() {
         const title = document.getElementById('plan-title').value || 'Plan en grupo';
-        
-        document.getElementById('invite-subtitle').innerText = `Vibe: ${selectedVibeText} · ${title}`;
-        document.getElementById('postal-title').innerText = title;
+        currentPlanData = { title: title, vibe: selectedVibeText };
 
-        // Tomar el dominio actual del navegador de forma automática y limpia
-        const currentDomain = window.location.host || 'planealo-aqui.netlify.app';
+        // Guardar como plan activo en localStorage para que el Host lo tenga persistente
+        localStorage.setItem('planealo_active_plan', JSON.stringify(currentPlanData));
+
+        updateInviteScreen();
+        showMapPlanPill(true);
+
+        // Construir el enlace limpio con el dominio actual
+        const domain = window.location.host || 'planealo-aqui.netlify.app';
         const encodedTitle = encodeURIComponent(title);
         const encodedVibe = encodeURIComponent(selectedVibeText);
         
-        fullInviteUrl = `https://${currentDomain}/?t=${encodedTitle}&v=${encodedVibe}`;
-        
+        fullInviteUrl = `https://${domain}/?t=${encodedTitle}&v=${encodedVibe}`;
         document.getElementById('invite-url-text').innerText = fullInviteUrl;
+        
         switchView('view-invite');
     }
 
-    function loadSharedPlan(planId) {
-        const savedData = localStorage.getItem(planId);
-        if (savedData) {
-            const plan = JSON.parse(savedData);
-            document.getElementById('invite-subtitle').innerText = `Vibe: ${plan.vibe} · ${plan.title}`;
-            document.getElementById('postal-title').innerText = plan.title;
+    function updateInviteScreen() {
+        document.getElementById('invite-subtitle').innerText = `Vibe: ${currentPlanData.vibe} · ${currentPlanData.title}`;
+        document.getElementById('postal-title').innerText = currentPlanData.title;
+    }
+
+    function showMapPlanPill(show) {
+        const pill = document.getElementById('map-plan-pill');
+        if (show) {
+            document.getElementById('map-pill-title').innerText = currentPlanData.title;
+            pill.style.display = 'flex';
         } else {
-            document.getElementById('invite-subtitle').innerText = `Vibe: ☕ Chill · Café en grupo`;
+            pill.style.display = 'none';
         }
+    }
+
+    function openActivePlan() {
+        // Al tocar la píldora en el mapa, el Host accede directo al panel de control sin recrear nada
+        updateInviteScreen();
+        document.getElementById('join-btn').style.display = 'none'; // El host no se auto-invita
+        switchView('view-invite');
     }
 
     function joinAsGuest() {
@@ -560,11 +618,11 @@
         document.getElementById('join-btn').innerText = '¡Conectado al Plan! 🚀';
         document.getElementById('join-btn').disabled = true;
         document.getElementById('join-btn').style.opacity = '0.7';
+        document.getElementById('participants-title').innerText = 'Amigos en camino (4)';
     }
 
     function copyInviteLink() {
-        const linkText = document.getElementById('invite-url-text').innerText;
-        navigator.clipboard.writeText(linkText).then(() => {
+        navigator.clipboard.writeText(fullInviteUrl).then(() => {
             alert('¡Enlace copiado al portapapeles!');
         }).catch(() => {
             alert('Enlace listo.');
@@ -572,8 +630,7 @@
     }
 
     function shareOnWhatsApp() {
-        const linkText = document.getElementById('invite-url-text').innerText;
-        const message = encodeURIComponent(`¡Únete al plan en Planealo Aquí! Entra aquí para coordinar: ${linkText}`);
+        const message = encodeURIComponent(`¡Únete a Planealo Aquí! Coordinemos el punto de encuentro aquí: ${fullInviteUrl}`);
         window.open(`https://api.whatsapp.com/send?text=${message}`, '_blank');
     }
 

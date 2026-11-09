@@ -26,9 +26,20 @@ export default function App() {
   const [planTitle, setPlanTitle] = useState<string>('Café y estudio en Casco Antiguo');
   const [selectedVibeText, setSelectedVibeText] = useState<string>('☕ Chill');
   const [inviteSubtitle, setInviteSubtitle] = useState<string>('Vibe: ☕ Chill · Café y estudio en Casco Antiguo');
+  const [activePlan, setActivePlan] = useState<PlanData | null>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('planealo_active_plan');
+        return saved ? JSON.parse(saved) : null;
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  });
   const [inviteUrl, setInviteUrl] = useState<string>(() => {
     const host = typeof window !== 'undefined' && window.location.host ? window.location.host : 'planealo-aqui.netlify.app';
-    return `https://${host}/?plan=active`;
+    return `https://${host}/?t=${encodeURIComponent('Café y estudio en Casco Antiguo')}&v=${encodeURIComponent('☕ Chill')}`;
   });
   const [postalTitle, setPostalTitle] = useState<string>('Café y Estudio en Casco');
 
@@ -145,6 +156,15 @@ export default function App() {
 
   const generateInvite = () => {
     const title = planTitle.trim() || 'Plan en grupo';
+    const planData: PlanData = { title, vibe: selectedVibeText };
+
+    // Guardar como plan activo en localStorage para que el Host lo tenga persistente
+    try {
+      localStorage.setItem('planealo_active_plan', JSON.stringify(planData));
+    } catch {
+      // safe fallback
+    }
+    setActivePlan(planData);
 
     setInviteSubtitle(`Vibe: ${selectedVibeText} · ${title}`);
     setPostalTitle(title);
@@ -157,6 +177,19 @@ export default function App() {
     const fullInviteUrl = `https://${currentDomain}/?t=${encodedTitle}&v=${encodedVibe}`;
     setInviteUrl(fullInviteUrl);
 
+    switchView('view-invite');
+  };
+
+  const openActivePlan = () => {
+    if (activePlan) {
+      setInviteSubtitle(`Vibe: ${activePlan.vibe} · ${activePlan.title}`);
+      setPostalTitle(activePlan.title);
+      const currentDomain = (typeof window !== 'undefined' && window.location.host) || 'planealo-aqui.netlify.app';
+      const encodedTitle = encodeURIComponent(activePlan.title);
+      const encodedVibe = encodeURIComponent(activePlan.vibe);
+      setInviteUrl(`https://${currentDomain}/?t=${encodedTitle}&v=${encodedVibe}`);
+    }
+    setIsGuestMode(false);
     switchView('view-invite');
   };
 
@@ -201,7 +234,7 @@ export default function App() {
   };
 
   const shareOnWhatsApp = () => {
-    const message = encodeURIComponent(`¡Únete al plan en Planealo Aquí! Entra aquí para coordinar: ${inviteUrl}`);
+    const message = encodeURIComponent(`¡Únete a Planealo Aquí! Coordinemos el punto de encuentro aquí: ${inviteUrl}`);
     window.open(`https://api.whatsapp.com/send?text=${message}`, '_blank');
   };
 
@@ -291,10 +324,42 @@ export default function App() {
           <div id="map-container" ref={mapContainerRef}></div>
 
           <div className="map-overlay-top">
-            <div className="brand-pill-dark">Planealo Aquí ⚡</div>
-            <button className="icon-btn-dark" onClick={goToMemory}>
-              🖼️
-            </button>
+            <div className="top-row">
+              <div className="brand-pill-dark">Planealo Aquí ⚡</div>
+              <button className="icon-btn-dark" onClick={goToMemory}>
+                🖼️
+              </button>
+            </div>
+            {/* Píldora flotante para que el Host supervise su plan activo en cualquier momento */}
+            {activePlan && (
+              <div
+                className="active-plan-pill"
+                id="map-plan-pill"
+                onClick={openActivePlan}
+              >
+                <div>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--accent-neon)', fontWeight: 800, display: 'block' }}>
+                    ⚡ PLAN ACTIVO
+                  </span>
+                  <span style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--text-white)' }} id="map-pill-title">
+                    {activePlan.title}
+                  </span>
+                </div>
+                <span
+                  style={{
+                    fontSize: '0.85rem',
+                    background: 'rgba(204,255,0,0.15)',
+                    color: 'var(--accent-neon)',
+                    padding: '4px 10px',
+                    borderRadius: '12px',
+                    fontWeight: 800,
+                  }}
+                  id="map-pill-count"
+                >
+                  4 en camino →
+                </span>
+              </div>
+            )}
           </div>
 
           <div className="map-overlay-bottom">
@@ -385,7 +450,7 @@ export default function App() {
               style={{ cursor: 'pointer', fontSize: '0.95rem', color: 'var(--text-gray)' }}
               onClick={() => switchView('view-map')}
             >
-              ← Cerrar
+              ← Volver al Mapa
             </h3>
             <span
               style={{
@@ -446,7 +511,7 @@ export default function App() {
           </div>
 
           <div className="card-dark">
-            <h4 style={{ fontSize: '0.95rem', marginBottom: '8px', color: 'var(--text-white)' }}>
+            <h4 id="participants-title" style={{ fontSize: '0.95rem', marginBottom: '8px', color: 'var(--text-white)' }}>
               Amigos en camino ({3 + (guestJoined ? 1 : 0)})
             </h4>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>

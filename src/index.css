@@ -187,13 +187,38 @@ body {
   width: 100%;
   padding: max(20px, env(safe-area-inset-top)) 20px 20px 20px;
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  flex-direction: column;
+  gap: 10px;
   z-index: 10;
   pointer-events: none;
 }
 .map-overlay-top > * {
   pointer-events: auto;
+}
+
+.top-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+}
+
+/* Píldora flotante del Host para ver el plan activo sin salir del mapa */
+.active-plan-pill {
+  background: rgba(22, 26, 24, 0.9);
+  backdrop-filter: blur(16px);
+  padding: 12px 18px;
+  border-radius: 20px;
+  border: 1px solid var(--accent-neon);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+  transition: transform 0.15s ease;
+}
+.active-plan-pill:active {
+  transform: scale(0.98);
 }
 
 .brand-pill-dark {
