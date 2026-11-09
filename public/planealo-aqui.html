@@ -476,10 +476,19 @@
 
         // GESTIÓN INTELIGENTE DE RUTAS POR URL
         const urlParams = new URLSearchParams(window.location.search);
+        const titleParam = urlParams.get('t');
+        const vibeParam = urlParams.get('v');
         const planParam = urlParams.get('plan');
         const seenWelcome = localStorage.getItem('planealo_onboarding_seen');
 
-        if (planParam) {
+        if (titleParam || vibeParam) {
+            const planTitle = titleParam ? decodeURIComponent(titleParam) : 'Plan en grupo';
+            const planVibe = vibeParam ? decodeURIComponent(vibeParam) : '☕ Chill';
+            document.getElementById('invite-subtitle').innerText = `Vibe: ${planVibe} · ${planTitle}`;
+            document.getElementById('postal-title').innerText = planTitle;
+            document.getElementById('join-btn').style.display = 'block';
+            switchView('view-invite');
+        } else if (planParam) {
             loadSharedPlan(planParam);
             document.getElementById('join-btn').style.display = 'block';
             switchView('view-invite');
@@ -519,17 +528,18 @@
 
     function generateInvite() {
         const title = document.getElementById('plan-title').value || 'Plan en grupo';
-        const planId = 'plan_' + Math.random().toString(36).substring(2, 8);
         
-        const planData = { title: title, vibe: selectedVibeText };
-        localStorage.setItem(planId, JSON.stringify(planData));
-
         document.getElementById('invite-subtitle').innerText = `Vibe: ${selectedVibeText} · ${title}`;
-        
+        document.getElementById('postal-title').innerText = title;
+
+        // Tomar el dominio actual del navegador de forma automática y limpia
         const currentDomain = window.location.host || 'planealo-aqui.netlify.app';
-        const inviteUrl = `https://${currentDomain}/?plan=${planId}`;
+        const encodedTitle = encodeURIComponent(title);
+        const encodedVibe = encodeURIComponent(selectedVibeText);
         
-        document.getElementById('invite-url-text').innerText = inviteUrl;
+        fullInviteUrl = `https://${currentDomain}/?t=${encodedTitle}&v=${encodedVibe}`;
+        
+        document.getElementById('invite-url-text').innerText = fullInviteUrl;
         switchView('view-invite');
     }
 

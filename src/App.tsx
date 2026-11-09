@@ -41,10 +41,23 @@ export default function App() {
     if (typeof window === 'undefined') return;
 
     const urlParams = new URLSearchParams(window.location.search);
+    const titleParam = urlParams.get('t');
+    const vibeParam = urlParams.get('v');
     const planParam = urlParams.get('plan');
     const seenWelcome = localStorage.getItem('planealo_onboarding_seen');
 
-    if (planParam) {
+    if (titleParam || vibeParam) {
+      const decodedTitle = titleParam ? decodeURIComponent(titleParam) : 'Plan en grupo';
+      const decodedVibe = vibeParam ? decodeURIComponent(vibeParam) : '☕ Chill';
+      setPlanTitle(decodedTitle);
+      setSelectedVibeText(decodedVibe);
+      setInviteSubtitle(`Vibe: ${decodedVibe} · ${decodedTitle}`);
+      setPostalTitle(decodedTitle);
+      setIsGuestMode(true);
+      const currentDomain = window.location.host || 'planealo-aqui.netlify.app';
+      setInviteUrl(`https://${currentDomain}/?t=${encodeURIComponent(decodedTitle)}&v=${encodeURIComponent(decodedVibe)}`);
+      switchView('view-invite');
+    } else if (planParam) {
       loadSharedPlan(planParam);
       setIsGuestMode(true);
       switchView('view-invite');
@@ -132,21 +145,17 @@ export default function App() {
 
   const generateInvite = () => {
     const title = planTitle.trim() || 'Plan en grupo';
-    const planId = 'plan_' + Math.random().toString(36).substring(2, 8);
-
-    const planData: PlanData = { title: title, vibe: selectedVibeText };
-    try {
-      localStorage.setItem(planId, JSON.stringify(planData));
-    } catch {
-      // safe fallback
-    }
 
     setInviteSubtitle(`Vibe: ${selectedVibeText} · ${title}`);
     setPostalTitle(title);
 
+    // Tomar el dominio actual del navegador de forma automática y limpia
     const currentDomain = (typeof window !== 'undefined' && window.location.host) || 'planealo-aqui.netlify.app';
-    const newInviteUrl = `https://${currentDomain}/?plan=${planId}`;
-    setInviteUrl(newInviteUrl);
+    const encodedTitle = encodeURIComponent(title);
+    const encodedVibe = encodeURIComponent(selectedVibeText);
+
+    const fullInviteUrl = `https://${currentDomain}/?t=${encodedTitle}&v=${encodedVibe}`;
+    setInviteUrl(fullInviteUrl);
 
     switchView('view-invite');
   };
