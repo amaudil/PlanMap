@@ -12,6 +12,8 @@
     <!-- Leaflet.js para el mapa base -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <!-- Confetti para celebración de geocerca -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.4/dist/confetti.browser.min.js"></script>
     
     <style>
         :root {
@@ -208,6 +210,52 @@
         }
         .active-plan-pill:active { transform: scale(0.98); }
 
+        /* Radar de Geocerca GPS en Vivo */
+        .radar-pill {
+            background: rgba(22, 26, 24, 0.94);
+            backdrop-filter: blur(16px);
+            padding: 10px 14px;
+            border-radius: 18px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+            font-size: 0.8rem;
+            transition: all 0.25s ease;
+        }
+        .radar-pill.inside {
+            border-color: #CCFF00;
+            background: rgba(22, 26, 24, 0.98);
+            box-shadow: 0 0 25px rgba(204, 255, 0, 0.3);
+        }
+        .radar-pulse-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: #CCFF00;
+            box-shadow: 0 0 8px #CCFF00;
+            flex-shrink: 0;
+            animation: pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        .radar-btn-sim {
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            color: #FFFFFF;
+            padding: 4px 8px;
+            border-radius: 8px;
+            font-size: 0.72rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+        .radar-btn-sim:hover {
+            background: rgba(204, 255, 0, 0.15);
+            border-color: #CCFF00;
+            color: #CCFF00;
+        }
+
         .icon-btn-dark {
             width: 46px; height: 46px;
             background: rgba(22, 26, 24, 0.85);
@@ -371,6 +419,17 @@
                 <div class="brand-pill-dark">Planealo Aquí ⚡</div>
                 <button class="icon-btn-dark" onclick="goToMemory()">📸</button>
             </div>
+            <!-- Radar de Geocerca GPS en Vivo -->
+            <div class="radar-pill" id="geofence-radar-pill">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <div class="radar-pulse-dot" id="radar-indicator"></div>
+                    <div>
+                        <div style="font-weight: 800; color: #FFFFFF;" id="radar-title">Punto a 210 m</div>
+                        <div style="font-size: 0.7rem; color: #8E9290;" id="radar-subtitle">~3 min a pie · Perímetro 50m</div>
+                    </div>
+                </div>
+                <button class="radar-btn-sim" id="btn-toggle-sim" onclick="toggleSimulateArrival()">Simular Llegada</button>
+            </div>
             <div class="active-plan-pill" id="map-plan-pill" onclick="openActivePlan()" style="display: none;">
                 <div>
                     <span style="font-size: 0.75rem; color: var(--accent-neon); font-weight: 800; display: block;">⚡ PLAN ACTIVO</span>
@@ -451,7 +510,7 @@
             <div style="display: flex; flex-direction: column; gap: 8px;">
                 <div style="display: flex; align-items: center; justify-content: space-between; font-size: 0.85rem;">
                     <span style="color: var(--text-white);">👤 Tú <span style="background: rgba(204,255,0,0.15); color: var(--accent-neon); padding: 2px 6px; border-radius: 6px; font-size: 0.7rem;">Host</span></span>
-                    <span style="color: #ff6b6b;">📍 En el punto</span>
+                    <span style="color: var(--accent-neon);" id="host-geofence-status">📍 En el punto (Check-in ✅)</span>
                 </div>
                 <div style="display: flex; align-items: center; justify-content: space-between; font-size: 0.85rem;">
                     <span style="color: var(--text-gray);">👩‍💻 Sofía R.</span>
@@ -515,14 +574,166 @@
     let participantCount = 3;
     let currentStyle = 'postal';
 
+    // Geofencing Real Engine
+    const GEOFENCE_RADIUS_METERS = 50;
+    const targetCoords = [8.9824, -79.5199];
+    let userCoords = [8.9808, -79.5212]; // ~210m de distancia inicial
+    let isSimulatedArrival = false;
+    let hasCelebratedArrival = false;
+    let geofenceCircle = null;
+    let targetMarker = null;
+    let userMarker = null;
+    let routePolyline = null;
+    let gpsWatcherId = null;
+
+    function calculateHaversine(lat1, lon1, lat2, lon2) {
+        const R = 6371000; // metros
+        const toRad = deg => (deg * Math.PI) / 180;
+        const dLat = toRad(lat2 - lat1);
+        const dLon = toRad(lon2 - lon1);
+        const a =
+            Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+            Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        return Math.round(R * c);
+    }
+
+    function formatDistanceETA(distanceMeters) {
+        const isInside = distanceMeters <= GEOFENCE_RADIUS_METERS;
+        const distanceLabel = distanceMeters >= 1000
+            ? `${(distanceMeters / 1000).toFixed(1)} km`
+            : `${distanceMeters} m`;
+        const walkingMinutes = Math.max(1, Math.round(distanceMeters / 80));
+        const etaLabel = isInside ? 'En el punto' : `~${walkingMinutes} min a pie`;
+        return { distanceLabel, etaLabel, isInside };
+    }
+
+    function updateGeofenceTelemetry(coords) {
+        userCoords = coords;
+        const dist = calculateHaversine(userCoords[0], userCoords[1], targetCoords[0], targetCoords[1]);
+        const { distanceLabel, etaLabel, isInside } = formatDistanceETA(dist);
+
+        const radarPill = document.getElementById('geofence-radar-pill');
+        const radarTitle = document.getElementById('radar-title');
+        const radarSubtitle = document.getElementById('radar-subtitle');
+        const hostStatus = document.getElementById('host-geofence-status');
+
+        if (isInside) {
+            if (radarPill) radarPill.classList.add('inside');
+            if (radarTitle) radarTitle.innerText = '¡Estás en el punto! 🎯';
+            if (radarSubtitle) radarSubtitle.innerText = `Check-in automático activado (${distanceLabel})`;
+            if (hostStatus) {
+                hostStatus.innerText = '📍 En el punto (Check-in ✅)';
+                hostStatus.style.color = '#CCFF00';
+            }
+
+            if (!hasCelebratedArrival) {
+                hasCelebratedArrival = true;
+                if (typeof confetti === 'function') {
+                    confetti({
+                        particleCount: 70,
+                        spread: 60,
+                        origin: { y: 0.65 },
+                        colors: ['#CCFF00', '#FFFFFF', '#25D366']
+                    });
+                }
+                if (navigator.vibrate) {
+                    try { navigator.vibrate([80, 50, 80]); } catch (e) {}
+                }
+            }
+        } else {
+            if (radarPill) radarPill.classList.remove('inside');
+            if (radarTitle) radarTitle.innerText = `Punto a ${distanceLabel}`;
+            if (radarSubtitle) radarSubtitle.innerText = `${etaLabel} · Perímetro ${GEOFENCE_RADIUS_METERS}m`;
+            if (hostStatus) {
+                hostStatus.innerText = `🏃 A ${distanceLabel} (${etaLabel})`;
+                hostStatus.style.color = '#8A9590';
+            }
+        }
+
+        // Actualizar capas en el mapa
+        if (userMarker) {
+            userMarker.setLatLng(userCoords);
+        }
+        if (routePolyline) {
+            routePolyline.setLatLngs([userCoords, targetCoords]);
+        }
+    }
+
+    function toggleSimulateArrival() {
+        isSimulatedArrival = !isSimulatedArrival;
+        const simBtn = document.getElementById('btn-toggle-sim');
+        if (isSimulatedArrival) {
+            if (simBtn) simBtn.innerText = 'Restablecer GPS';
+            updateGeofenceTelemetry([8.98237, -79.51988]); // Dentro del radio (< 5m)
+        } else {
+            hasCelebratedArrival = false;
+            if (simBtn) simBtn.innerText = 'Simular Llegada';
+            updateGeofenceTelemetry([8.9808, -79.5212]); // Fuera (~210m)
+        }
+    }
+
     window.addEventListener('DOMContentLoaded', () => {
-        map = L.map('map-container', { zoomControl: false }).setView([8.9824, -79.5199], 15);
+        map = L.map('map-container', { zoomControl: false }).setView(targetCoords, 16);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '© OpenStreetMap'
         }).addTo(map);
 
-        L.marker([8.9824, -79.5199]).addTo(map)
-            .bindPopup('Tú estás aquí ✨');
+        // Geocerca 50m
+        geofenceCircle = L.circle(targetCoords, {
+            radius: GEOFENCE_RADIUS_METERS,
+            color: '#CCFF00',
+            fillColor: '#CCFF00',
+            fillOpacity: 0.18,
+            weight: 2
+        }).addTo(map);
+
+        // Marcador del punto de encuentro
+        const targetIcon = L.divIcon({
+            className: 'custom-target-marker',
+            html: '<div style="background:#CCFF00; color:#0A0C0B; font-weight:800; font-size:12px; padding:4px 8px; border-radius:12px; border:2px solid #FFFFFF; box-shadow:0 0 15px rgba(204,255,0,0.8); display:flex; align-items:center; gap:4px;">📍 Punto</div>',
+            iconSize: [60, 26],
+            iconAnchor: [30, 13]
+        });
+        targetMarker = L.marker(targetCoords, { icon: targetIcon }).addTo(map)
+            .bindPopup('<b>Punto de Encuentro</b><br>Perímetro de geocerca: 50m');
+
+        // Marcador del usuario
+        const userIcon = L.divIcon({
+            className: 'custom-user-marker',
+            html: '<div style="width:16px; height:16px; border-radius:50%; background:#FFFFFF; border:3px solid #CCFF00; box-shadow:0 0 12px #CCFF00;"></div>',
+            iconSize: [16, 16],
+            iconAnchor: [8, 8]
+        });
+        userMarker = L.marker(userCoords, { icon: userIcon }).addTo(map)
+            .bindPopup('Tu ubicación en vivo');
+
+        // Línea de ruta recta
+        routePolyline = L.polyline([userCoords, targetCoords], {
+            color: '#CCFF00',
+            weight: 2,
+            dashArray: '6, 8',
+            opacity: 0.85
+        }).addTo(map);
+
+        // Inicializar telemetría
+        updateGeofenceTelemetry(userCoords);
+
+        // GPS Real watcher
+        if ('geolocation' in navigator) {
+            gpsWatcherId = navigator.geolocation.watchPosition(
+                pos => {
+                    if (!isSimulatedArrival) {
+                        updateGeofenceTelemetry([pos.coords.latitude, pos.coords.longitude]);
+                    }
+                },
+                err => {
+                    console.log('GPS continuo opcional:', err.message);
+                },
+                { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+            );
+        }
 
         const urlParams = new URLSearchParams(window.location.search);
         const planTitleParam = urlParams.get('t');

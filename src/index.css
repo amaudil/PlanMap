@@ -221,6 +221,52 @@ body {
   transform: scale(0.98);
 }
 
+/* Radar de Geocerca GPS en Vivo */
+.radar-pill {
+  background: rgba(22, 26, 24, 0.94);
+  backdrop-filter: blur(16px);
+  padding: 10px 14px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+  font-size: 0.8rem;
+  transition: all 0.25s ease;
+}
+.radar-pill.inside {
+  border-color: #CCFF00;
+  background: rgba(22, 26, 24, 0.98);
+  box-shadow: 0 0 25px rgba(204, 255, 0, 0.3);
+}
+.radar-pulse-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: #CCFF00;
+  box-shadow: 0 0 8px #CCFF00;
+  flex-shrink: 0;
+  animation: pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+.radar-btn-sim {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #FFFFFF;
+  padding: 4px 8px;
+  border-radius: 8px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.radar-btn-sim:hover {
+  background: rgba(204, 255, 0, 0.15);
+  border-color: #CCFF00;
+  color: #CCFF00;
+}
+
 .brand-pill-dark {
   background: rgba(22, 26, 24, 0.85);
   backdrop-filter: blur(16px);
