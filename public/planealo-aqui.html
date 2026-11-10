@@ -501,7 +501,7 @@
         </div>
 
         <div class="view-footer" style="display: flex; gap: 10px;">
-            <button class="input-dark" style="flex: 1; text-align: center; cursor: pointer; font-weight: 700; background: var(--card-dark);" onclick="alert('¡Recuerdo guardado en tu galería!')">Guardar</button>
+            <button class="input-dark" style="flex: 1; text-align: center; cursor: pointer; font-weight: 700; background: var(--card-dark);" onclick="saveMemoryAsImage()">Guardar 💾</button>
             <button class="btn-neon" style="flex: 1; margin-top: 0;" onclick="shareMemory()">Compartir 🚀</button>
         </div>
     </div>
@@ -690,16 +690,287 @@
         }
     }
 
-    function shareMemory() {
-        if (navigator.share) {
-            navigator.share({
-                title: 'Recuerdo - Planealo Aquí',
-                text: `¡Mira nuestro recuerdo de "${currentPlanData.title}" en Planealo Aquí!`,
-                url: window.location.origin
-            }).catch(() => {});
+    function drawRoundedRect(ctx, x, y, width, height, radius) {
+        ctx.beginPath();
+        ctx.moveTo(x + radius, y);
+        ctx.lineTo(x + width - radius, y);
+        ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+        ctx.lineTo(x + width, y + height - radius);
+        ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+        ctx.lineTo(x + radius, y + height);
+        ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+        ctx.lineTo(x, y + radius);
+        ctx.quadraticCurveTo(x, y, x + radius, y);
+        ctx.closePath();
+    }
+
+    async function generateMemoryCanvas() {
+        const canvas = document.createElement('canvas');
+        canvas.width = 1080;
+        canvas.height = 1350;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return null;
+
+        // 1. Fondo Dark Pro
+        const bgGradient = ctx.createLinearGradient(0, 0, 1080, 1350);
+        bgGradient.addColorStop(0, '#121715');
+        bgGradient.addColorStop(0.5, '#0A0C0B');
+        bgGradient.addColorStop(1, '#050706');
+        ctx.fillStyle = bgGradient;
+        ctx.fillRect(0, 0, 1080, 1350);
+
+        // Marco exterior
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+        ctx.lineWidth = 2;
+        drawRoundedRect(ctx, 30, 30, 1020, 1290, 36);
+        ctx.stroke();
+
+        ctx.strokeStyle = 'rgba(204, 255, 0, 0.2)';
+        ctx.lineWidth = 1.5;
+        drawRoundedRect(ctx, 42, 42, 996, 1266, 28);
+        ctx.stroke();
+
+        // 2. Encabezado de Marca
+        ctx.fillStyle = '#161A18';
+        drawRoundedRect(ctx, 70, 70, 320, 60, 30);
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        ctx.fillStyle = '#FFFFFF';
+        ctx.font = '800 24px "Plus Jakarta Sans", sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText('PLANEALO AQUÍ', 96, 108);
+        ctx.fillStyle = '#CCFF00';
+        ctx.fillText('⚡', 290, 108);
+
+        // Sello Postal Circular
+        ctx.save();
+        ctx.strokeStyle = '#CCFF00';
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.arc(970, 100, 44, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.fillStyle = '#CCFF00';
+        ctx.font = '800 11px "Plus Jakarta Sans", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('PANAMÁ', 970, 95);
+        ctx.font = '700 9px "Plus Jakarta Sans", sans-serif';
+        ctx.fillText('2026', 970, 112);
+        ctx.restore();
+
+        // 3. Contenedor de Fotografía
+        const photoX = 70;
+        const photoY = 160;
+        const photoW = 940;
+        const photoH = 580;
+
+        const uploadedImg = document.getElementById('uploaded-photo');
+        if (uploadedImg && uploadedImg.src && uploadedImg.style.display !== 'none') {
+            try {
+                ctx.save();
+                drawRoundedRect(ctx, photoX, photoY, photoW, photoH, 28);
+                ctx.clip();
+
+                const imgRatio = uploadedImg.naturalWidth / uploadedImg.naturalHeight;
+                const targetRatio = photoW / photoH;
+                let sWidth = uploadedImg.naturalWidth;
+                let sHeight = uploadedImg.naturalHeight;
+                let sx = 0;
+                let sy = 0;
+
+                if (imgRatio > targetRatio) {
+                    sWidth = uploadedImg.naturalHeight * targetRatio;
+                    sx = (uploadedImg.naturalWidth - sWidth) / 2;
+                } else {
+                    sHeight = uploadedImg.naturalWidth / targetRatio;
+                    sy = (uploadedImg.naturalHeight - sHeight) / 2;
+                }
+
+                ctx.drawImage(uploadedImg, sx, sy, sWidth, sHeight, photoX, photoY, photoW, photoH);
+
+                const imgOverlay = ctx.createLinearGradient(0, photoY + photoH - 120, 0, photoY + photoH);
+                imgOverlay.addColorStop(0, 'transparent');
+                imgOverlay.addColorStop(1, 'rgba(10, 12, 11, 0.7)');
+                ctx.fillStyle = imgOverlay;
+                ctx.fillRect(photoX, photoY + photoH - 120, photoW, 120);
+                ctx.restore();
+
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+                ctx.lineWidth = 2;
+                drawRoundedRect(ctx, photoX, photoY, photoW, photoH, 28);
+                ctx.stroke();
+            } catch (e) {
+                console.error(e);
+            }
         } else {
-            alert('¡Recuerdo listo para compartir!');
+            ctx.fillStyle = '#161A18';
+            drawRoundedRect(ctx, photoX, photoY, photoW, photoH, 28);
+            ctx.fill();
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            ctx.font = '100px sans-serif';
+            ctx.textAlign = 'center';
+            const emoji = currentPlanData.vibe.split(' ')[0] || '📸';
+            ctx.fillText(emoji, photoX + photoW / 2, photoY + photoH / 2 - 20);
+
+            ctx.fillStyle = '#FFFFFF';
+            ctx.font = '800 24px "Plus Jakarta Sans", sans-serif';
+            ctx.fillText('Recuerdo Colectivo en Vivo', photoX + photoW / 2, photoY + photoH / 2 + 50);
+
+            ctx.fillStyle = '#8A9590';
+            ctx.font = '500 16px "Plus Jakarta Sans", sans-serif';
+            ctx.fillText('Foto tomada y confirmada en el punto de encuentro', photoX + photoW / 2, photoY + photoH / 2 + 80);
         }
+
+        // 4. Etiqueta de Estilo
+        const styleLabel = currentStyle === 'postal' ? '✉️ POSTAL PRO' : currentStyle === 'collage' ? '📸 COLLAGE COLECTIVO' : '🤪 VIBE / MEME';
+        ctx.fillStyle = 'rgba(204, 255, 0, 0.12)';
+        drawRoundedRect(ctx, photoX, 770, 220, 36, 18);
+        ctx.fill();
+        ctx.strokeStyle = '#CCFF00';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
+        ctx.fillStyle = '#CCFF00';
+        ctx.font = '800 13px "Plus Jakarta Sans", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(styleLabel, photoX + 110, 794);
+
+        // 5. Título del Plan
+        ctx.fillStyle = '#FFFFFF';
+        ctx.font = '800 42px "Plus Jakarta Sans", sans-serif';
+        ctx.textAlign = 'left';
+        let displayTitle = currentPlanData.title;
+        if (ctx.measureText(displayTitle).width > 920) {
+            while (ctx.measureText(displayTitle + '...').width > 920 && displayTitle.length > 0) {
+                displayTitle = displayTitle.slice(0, -1);
+            }
+            displayTitle += '...';
+        }
+        ctx.fillText(displayTitle, photoX, 855);
+
+        // 6. Metadata
+        ctx.fillStyle = '#8A9590';
+        ctx.font = '600 20px "Plus Jakarta Sans", sans-serif';
+        ctx.fillText(`✨ ${currentPlanData.vibe}   ·   📍 Casco Antiguo, Panamá   ·   📅 6 de Noviembre, 2026`, photoX, 895);
+
+        // Línea divisoria
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(photoX, 930);
+        ctx.lineTo(photoX + photoW, 930);
+        ctx.stroke();
+
+        // 7. Cita / Reflexión
+        ctx.fillStyle = '#161A18';
+        drawRoundedRect(ctx, photoX, 955, photoW, 145, 24);
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        const quoteText = document.getElementById('memory-quote').innerText;
+        ctx.fillStyle = '#E6E8E7';
+        ctx.font = 'italic 600 22px "Plus Jakarta Sans", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(quoteText, photoX + photoW / 2, 1020);
+
+        ctx.fillStyle = '#CCFF00';
+        ctx.font = '800 16px "Plus Jakarta Sans", sans-serif';
+        ctx.fillText('— @amabo', photoX + photoW / 2, 1060);
+
+        // 8. Participantes
+        ctx.fillStyle = '#8A9590';
+        ctx.font = '700 15px "Plus Jakarta Sans", sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText('PARTICIPANTES EN EL PUNTO:', photoX, 1140);
+
+        const attendees = [
+            { name: 'Tú', role: 'Host', avatar: '👤' },
+            { name: 'Sofía R.', avatar: '👩‍💻' },
+            { name: 'Mateo V.', avatar: '🧑‍🎨' }
+        ];
+
+        let currentBadgeX = photoX;
+        const badgeY = 1160;
+        attendees.forEach((att) => {
+            const text = `${att.avatar} ${att.name}${att.role ? ` (${att.role})` : ''} ✅`;
+            ctx.font = '700 16px "Plus Jakarta Sans", sans-serif';
+            const textWidth = ctx.measureText(text).width;
+            const badgeW = textWidth + 30;
+
+            ctx.fillStyle = '#161A18';
+            drawRoundedRect(ctx, currentBadgeX, badgeY, badgeW, 40, 20);
+            ctx.fill();
+            ctx.strokeStyle = att.role === 'Host' ? '#CCFF00' : 'rgba(255, 255, 255, 0.12)';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+
+            ctx.fillStyle = att.role === 'Host' ? '#CCFF00' : '#FFFFFF';
+            ctx.fillText(text, currentBadgeX + 15, badgeY + 26);
+
+            currentBadgeX += badgeW + 14;
+        });
+
+        // 9. Pie
+        ctx.fillStyle = '#5A635E';
+        ctx.font = '600 15px "Plus Jakarta Sans", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('Experiencia coordinada en vivo con Planealo Aquí ⚡ · planealo-aqui.netlify.app', 1080 / 2, 1275);
+
+        return canvas;
+    }
+
+    async function saveMemoryAsImage() {
+        const canvas = await generateMemoryCanvas();
+        if (!canvas) return;
+        const dataUrl = canvas.toDataURL('image/png');
+        const slug = (currentPlanData.title || 'recuerdo').toLowerCase().replace(/[^a-z0-9]+/g, '-');
+        const a = document.createElement('a');
+        a.href = dataUrl;
+        a.download = `planealo-recuerdo-${slug}.png`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        alert('¡Recuerdo descargado como imagen PNG de alta calidad!');
+    }
+
+    async function shareMemory() {
+        const canvas = await generateMemoryCanvas();
+        if (!canvas) return;
+
+        canvas.toBlob(async (blob) => {
+            if (!blob) return;
+            const slug = (currentPlanData.title || 'recuerdo').toLowerCase().replace(/[^a-z0-9]+/g, '-');
+            const file = new File([blob], `recuerdo-${slug}.png`, { type: 'image/png' });
+
+            if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                try {
+                    await navigator.share({
+                        title: `Recuerdo: ${currentPlanData.title}`,
+                        text: `¡Mira nuestro recuerdo de "${currentPlanData.title}" en Planealo Aquí! ⚡\n— @amabo`,
+                        files: [file]
+                    });
+                } catch (e) {
+                    // dismissed or error
+                }
+            } else if (navigator.share) {
+                try {
+                    await navigator.share({
+                        title: `Recuerdo: ${currentPlanData.title}`,
+                        text: `¡Mira nuestro recuerdo de "${currentPlanData.title}" en Planealo Aquí! ⚡\n— @amabo`,
+                        url: window.location.origin
+                    });
+                } catch (e) {}
+            } else {
+                saveMemoryAsImage();
+            }
+        }, 'image/png');
     }
 </script>
 

@@ -1,8 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
 import confetti from 'canvas-confetti';
-import { downloadPostcardAsImage } from './utils/postcardCanvas';
-import { PostcardMemory } from './types';
+import { downloadPostcardAsImage, sharePostcardAsFile } from './utils/postcardCanvas';
 
 interface PlanData {
   title: string;
@@ -268,58 +267,59 @@ export default function App() {
     setCurrentStyle(style);
   };
 
-  const shareMemory = () => {
-    if (navigator.share) {
-      navigator
-        .share({
-          title: 'Recuerdo - Planealo Aquí',
-          text: `¡Mira nuestro recuerdo de "${planTitle}" en Planealo Aquí!`,
-          url: window.location.origin,
-        })
-        .catch(() => {});
+  const getMemoryQuote = () => {
+    if (currentStyle === 'postal') {
+      return '“Un espacio libre de ruido para conectar de verdad.”';
+    } else if (currentStyle === 'collage') {
+      return '📸 Colección de momentos épicos en grupo.';
     } else {
-      alert('¡Recuerdo listo para compartir!');
+      return '🤪 Misión cumplida: Sobrevivimos al plan sin perdernos.';
     }
   };
 
   const handleSavePostal = async () => {
-    alert('¡Postal guardada!');
     try {
-      const memory: PostcardMemory = {
-        id: `postal-${Date.now()}`,
-        campfireId: 'planealo-active',
-        title: postalTitle,
-        vibeEmoji: selectedVibeText.split(' ')[0] || '☕',
-        vibeName: selectedVibeText.split(' ')[1] || 'Chill',
+      await downloadPostcardAsImage({
+        title: postalTitle || planTitle || 'Plan en grupo',
+        vibeText: selectedVibeText,
+        style: currentStyle,
+        quote: getMemoryQuote(),
+        uploadedPhotoUrl: uploadedPhoto,
         date: '6 de Noviembre, 2026',
-        city: 'Ciudad de Panamá',
-        location: 'Panamá',
-        heroImage: 'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?auto=format&fit=crop&w=800&q=80',
-        quote: '“Un espacio libre de ruido para conectar de verdad.”',
-        theme: 'twilight',
-        stampText: 'PANAMÁ · PLANEALO AQUÍ',
+        location: 'Casco Antiguo, Panamá',
         attendees: [
-          { name: 'Tú', avatar: '👤', signature: 'Tú ⚡' },
-          { name: 'Sofía', avatar: '👩💻', signature: 'Sofía R.' },
-          { name: 'Mateo', avatar: '🧑🎨', signature: 'Mateo V.' },
+          { name: 'Tú', role: 'Host', avatar: '👤' },
+          { name: 'Sofía R.', avatar: '👩‍💻' },
+          { name: 'Mateo V.', avatar: '🧑‍🎨' },
         ],
-      };
-      await downloadPostcardAsImage(memory);
+      });
+      alert('¡Recuerdo descargado como imagen PNG de alta calidad!');
     } catch {
-      // safe fallback
+      alert('¡Postal guardada!');
     }
   };
 
-  const handleSharePostal = () => {
-    alert('¡Abriendo menú para compartir!');
-    if (navigator.share) {
-      navigator
-        .share({
-          title: `Postal Colectiva: ${postalTitle}`,
-          text: `“Un espacio libre de ruido para conectar de verdad.” - Planealo Aquí`,
-          url: inviteUrl,
-        })
-        .catch(() => {});
+  const shareMemory = async () => {
+    try {
+      const shared = await sharePostcardAsFile({
+        title: postalTitle || planTitle || 'Plan en grupo',
+        vibeText: selectedVibeText,
+        style: currentStyle,
+        quote: getMemoryQuote(),
+        uploadedPhotoUrl: uploadedPhoto,
+        date: '6 de Noviembre, 2026',
+        location: 'Casco Antiguo, Panamá',
+        attendees: [
+          { name: 'Tú', role: 'Host', avatar: '👤' },
+          { name: 'Sofía R.', avatar: '👩‍💻' },
+          { name: 'Mateo V.', avatar: '🧑‍🎨' },
+        ],
+      });
+      if (!shared) {
+        alert('¡Imagen lista para compartir!');
+      }
+    } catch {
+      alert('¡Recuerdo listo para compartir!');
     }
   };
 
@@ -741,9 +741,9 @@ export default function App() {
                 fontWeight: 700,
                 background: 'var(--card-dark)',
               }}
-              onClick={() => alert('¡Recuerdo guardado en tu galería!')}
+              onClick={handleSavePostal}
             >
-              Guardar
+              Guardar 💾
             </button>
             <button className="btn-neon" style={{ flex: 1, marginTop: 0 }} onClick={shareMemory}>
               Compartir 🚀
