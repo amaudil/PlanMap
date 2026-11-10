@@ -7,8 +7,14 @@
     <!-- PWA Config -->
     <link rel="manifest" href="/manifest.json">
     <meta name="theme-color" content="#CCFF00">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="apple-touch-icon" href="/icon-192.png">
+
     <!-- Tipografía moderna -->
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Caveat:wght@600;700&display=swap" rel="stylesheet">
+    
     <!-- Leaflet.js para el mapa base -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
@@ -66,13 +72,9 @@
             top: 0; left: 0; width: 100%; height: 100%;
             display: none;
             flex-direction: column;
-            background-color: var(--bg-dark);
-            opacity: 0;
-            transform: scale(0.98);
-            transition: opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1), transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
             z-index: 1;
         }
-        .view.active { display: flex; opacity: 1; transform: scale(1); z-index: 5; }
+        .view.active { display: flex; }
 
         /* VISTA 0: BIENVENIDA */
         #view-welcome {
@@ -81,7 +83,6 @@
             background: linear-gradient(180deg, #111513 0%, #0A0C0B 100%);
             overflow-y: auto;
         }
-
         .welcome-hero-card {
             width: 100%;
             height: 300px;
@@ -94,20 +95,17 @@
             box-shadow: 0 16px 32px rgba(0,0,0,0.4);
             flex-shrink: 0;
         }
-
         .welcome-hero-img {
             width: 100%;
             height: 100%;
             object-fit: cover;
             filter: brightness(0.85) contrast(1.05);
         }
-
         .hero-gradient-overlay {
             position: absolute;
             bottom: 0; left: 0; width: 100%; height: 50%;
             background: linear-gradient(to top, rgba(22, 26, 24, 0.9), transparent);
         }
-
         .welcome-title {
             font-size: clamp(1.8rem, 5vw, 2.2rem);
             font-weight: 800;
@@ -116,7 +114,6 @@
             margin-top: 16px;
             color: var(--text-white);
         }
-
         .welcome-subtitle {
             font-size: 0.9rem;
             color: var(--text-gray);
@@ -124,6 +121,7 @@
             line-height: 1.4;
         }
 
+        /* COMPONENTES GENERALES DARK PRO */
         .btn-neon {
             background-color: var(--accent-neon);
             color: #0A0C0B;
@@ -137,8 +135,11 @@
             text-align: center;
             box-shadow: 0 10px 30px rgba(204, 255, 0, 0.25);
             transition: transform 0.15s ease, background-color 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
-        .btn-neon:active { transform: scale(0.97); background-color: var(--accent-neon-hover); }
+        .btn-neon:active { transform: scale(0.97); }
 
         .btn-whatsapp {
             background-color: var(--accent-whatsapp);
@@ -147,7 +148,7 @@
             padding: 14px;
             border-radius: 18px;
             font-size: 0.95rem;
-            font-weight: 700;
+            font-weight: 800;
             border: none;
             cursor: pointer;
             text-align: center;
@@ -239,6 +240,10 @@
             flex-shrink: 0;
             animation: pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
         }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.4; transform: scale(1.3); }
+        }
         .radar-btn-sim {
             background: rgba(255, 255, 255, 0.08);
             border: 1px solid rgba(255, 255, 255, 0.15);
@@ -254,6 +259,40 @@
             background: rgba(204, 255, 0, 0.15);
             border-color: #CCFF00;
             color: #CCFF00;
+        }
+
+        /* Selector dinámico de ubicación */
+        .btn-location-action {
+            flex: 1;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            color: var(--text-white);
+            padding: 9px 12px;
+            border-radius: 12px;
+            font-size: 0.78rem;
+            font-weight: 700;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            transition: all 0.2s ease;
+        }
+        .btn-location-action:hover, .btn-location-action:active {
+            background: rgba(204, 255, 0, 0.12);
+            border-color: var(--accent-neon);
+            color: var(--accent-neon);
+        }
+        .selector-banner {
+            background: rgba(22, 26, 24, 0.96);
+            backdrop-filter: blur(16px);
+            border: 1px solid var(--accent-neon);
+            padding: 12px 14px;
+            border-radius: 18px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
         }
 
         .icon-btn-dark {
@@ -301,83 +340,98 @@
         .solid-view {
             position: absolute;
             top: 0; left: 0; width: 100%; height: 100%;
-            padding: max(24px, env(safe-area-inset-top)) 20px max(24px, env(safe-area-inset-bottom)) 20px;
-            background: var(--bg-dark);
+            background-color: var(--bg-dark);
             z-index: 20;
+            padding: max(24px, env(safe-area-inset-top)) 20px max(24px, env(safe-area-inset-bottom)) 20px;
             display: none;
             flex-direction: column;
             overflow-y: auto;
-            -webkit-overflow-scrolling: touch;
-            transform: translateY(15px);
-            transition: transform 0.25s ease, opacity 0.25s ease;
-            opacity: 0;
         }
-        .solid-view.active { display: flex; transform: translateY(0); opacity: 1; }
+        .solid-view.active { display: flex; }
 
-        h1 { font-size: 1.7rem; font-weight: 800; color: var(--text-white); margin-bottom: 4px; letter-spacing: -0.5px; }
-        p.subtitle { font-size: 0.9rem; color: var(--text-gray); margin-bottom: 20px; }
-
-        .card-dark {
-            background: var(--card-dark);
-            border-radius: 24px;
-            padding: 20px;
-            box-shadow: 0 8px 24px rgba(0,0,0,0.3);
-            margin-bottom: 14px;
-            border: 1px solid var(--card-border);
-        }
+        h1 { font-size: 1.7rem; font-weight: 800; letter-spacing: -0.5px; margin-bottom: 6px; }
+        .subtitle { font-size: 0.9rem; color: var(--text-gray); margin-bottom: 20px; }
 
         .input-dark {
-            width: 100%; padding: 16px;
-            border-radius: 18px;
-            border: 1px solid var(--card-border);
+            width: 100%;
             background: var(--card-dark);
+            border: 1px solid var(--card-border);
+            padding: 15px 18px;
+            border-radius: 16px;
             color: var(--text-white);
             font-size: 1rem;
+            font-weight: 600;
             outline: none;
-            transition: border-color 0.2s;
+            transition: border-color 0.2s ease;
         }
         .input-dark:focus { border-color: var(--accent-neon); }
 
-        /* Selector de Vibes */
-        .vibe-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
+        .vibe-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+            margin-bottom: 16px;
+        }
         .vibe-option-dark {
             background: var(--card-dark);
-            border: 2px solid var(--card-border);
+            border: 1px solid var(--card-border);
             border-radius: 20px;
-            padding: 16px 10px;
-            text-align: center;
+            padding: 16px;
             cursor: pointer;
             transition: all 0.2s ease;
-        }
-        .vibe-option-dark.selected { border-color: var(--accent-neon); background: rgba(204, 255, 0, 0.06); }
-        .vibe-emoji { font-size: 2rem; margin-bottom: 6px; }
-        .vibe-name { font-weight: 700; font-size: 0.9rem; color: var(--text-white); }
-
-        /* Generador de Recuerdos y Estilos */
-        .postal-card-dark {
-            background: linear-gradient(135deg, #161A18 0%, #0A0C0B 100%);
-            color: var(--text-white);
-            padding: 20px;
-            border-radius: 28px;
             text-align: center;
-            margin-bottom: 14px;
+        }
+        .vibe-option-dark.selected {
+            border-color: var(--accent-neon);
+            background: rgba(204, 255, 0, 0.05);
+            box-shadow: 0 0 20px rgba(204, 255, 0, 0.15);
+        }
+        .vibe-emoji { font-size: 1.8rem; margin-bottom: 6px; }
+        .vibe-name { font-size: 0.9rem; font-weight: 700; color: var(--text-white); }
+
+        .card-dark {
+            background: var(--card-dark);
+            border-radius: 20px;
+            padding: 18px;
             border: 1px solid var(--card-border);
-            box-shadow: 0 16px 35px rgba(0,0,0,0.5);
-            position: relative;
-            overflow: hidden;
+            margin-bottom: 16px;
+        }
+
+        .postal-card-dark {
+            background: linear-gradient(135deg, #161A18 0%, #0D100F 100%);
+            border-radius: 24px;
+            padding: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            box-shadow: 0 20px 40px rgba(0,0,0,0.6);
+            margin-bottom: 16px;
+            display: flex;
+            flex-direction: column;
         }
         .postal-img-container {
-            width: 100%; height: 180px; background: rgba(255,255,255,0.03); border-radius: 18px; display: flex; align-items: center; justify-content: center; font-size: 3rem; margin-bottom: 12px;
-            border: 1px solid var(--card-border);
+            width: 100%;
+            height: 190px;
+            border-radius: 16px;
             overflow: hidden;
+            margin-bottom: 14px;
+            border: 1px dashed rgba(255, 255, 255, 0.2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0,0,0,0.3);
+            cursor: pointer;
             position: relative;
         }
         .postal-img-container img {
-            width: 100%; height: 100%; object-fit: cover; display: none;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: none;
         }
 
         .style-selector {
-            display: flex; gap: 8px; margin-bottom: 14px;
+            display: flex;
+            gap: 8px;
+            margin-bottom: 14px;
         }
         .style-btn {
             flex: 1; padding: 10px 6px; background: var(--card-dark); border: 1px solid var(--card-border); border-radius: 14px; color: var(--text-gray); font-size: 0.8rem; font-weight: 700; cursor: pointer; text-align: center; transition: all 0.2s;
@@ -419,6 +473,29 @@
                 <div class="brand-pill-dark">Planealo Aquí ⚡</div>
                 <button class="icon-btn-dark" onclick="goToMemory()">📸</button>
             </div>
+
+            <!-- Banner interactivo de selección de punto en mapa -->
+            <div class="selector-banner" id="map-selection-banner" style="display: none;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="font-size: 0.75rem; color: var(--accent-neon); font-weight: 800; display: flex; align-items: center; gap: 6px;">
+                        <span class="radar-pulse-dot" style="background:#CCFF00; box-shadow:0 0 8px #CCFF00;"></span>
+                        SELECCIONA EL ENCUENTRO
+                    </span>
+                    <button onclick="cancelLocationSelection()" style="background:none; border:none; color:var(--text-gray); font-size:0.75rem; font-weight:700; cursor:pointer;">✕ Volver</button>
+                </div>
+                <p style="font-size: 0.78rem; color: var(--text-white); margin: 0;">
+                    Toca cualquier punto del mapa para mover el pin o arrástralo libremente.
+                </p>
+                <div style="display: flex; gap: 6px; align-items: center;">
+                    <span id="selected-coords-pill" style="font-size: 0.72rem; color: var(--text-gray); background: rgba(255,255,255,0.06); padding: 5px 8px; border-radius: 8px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                        📍 8.9824, -79.5199
+                    </span>
+                    <button class="radar-btn-sim" style="background:var(--accent-neon); color:#0A0C0B; border:none; padding:5px 12px; font-weight:800;" onclick="confirmLocationSelection()">
+                        Confirmar Punto ✅
+                    </button>
+                </div>
+            </div>
+
             <!-- Radar de Geocerca GPS en Vivo -->
             <div class="radar-pill" id="geofence-radar-pill">
                 <div style="display: flex; align-items: center; gap: 8px;">
@@ -430,6 +507,7 @@
                 </div>
                 <button class="radar-btn-sim" id="btn-toggle-sim" onclick="toggleSimulateArrival()">Simular Llegada</button>
             </div>
+
             <div class="active-plan-pill" id="map-plan-pill" onclick="openActivePlan()" style="display: none;">
                 <div>
                     <span style="font-size: 0.75rem; color: var(--accent-neon); font-weight: 800; display: block;">⚡ PLAN ACTIVO</span>
@@ -458,7 +536,7 @@
 
         <div style="margin-bottom: 16px;">
             <label style="font-size: 0.85rem; font-weight: 700; display: block; margin-bottom: 6px; color: var(--text-white);">¿Qué van a hacer?</label>
-            <input type="text" id="plan-title" class="input-dark" value="Café y estudio en Casco Antiguo">
+            <input type="text" id="plan-title" class="input-dark" value="Café y estudio">
         </div>
 
         <label style="font-size: 0.85rem; font-weight: 700; display: block; margin-bottom: 10px; color: var(--text-white);">Selecciona la Vibe</label>
@@ -478,6 +556,25 @@
             <div class="vibe-option-dark" onclick="selectVibe(this, 'Nocturno', '🌙')">
                 <div class="vibe-emoji">🌙</div>
                 <div class="vibe-name">Nocturno</div>
+            </div>
+        </div>
+
+        <!-- Selector dinámico de Punto de Encuentro -->
+        <div class="card-dark" style="margin-top: 14px; margin-bottom: 16px; border: 1px solid var(--card-border);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                <label style="font-size: 0.85rem; font-weight: 700; color: var(--text-white); margin-bottom: 0;">📍 Punto de Encuentro</label>
+                <span id="create-coords-badge" style="font-size: 0.72rem; color: var(--accent-neon); background: rgba(204,255,0,0.12); padding: 2px 8px; border-radius: 8px; font-weight: 800;">8.9824, -79.5199</span>
+            </div>
+            <p style="font-size: 0.78rem; color: var(--text-gray); margin-bottom: 10px;" id="create-location-desc">
+                Punto geográfico donde se activará la geocerca de 50 metros.
+            </p>
+            <div style="display: flex; gap: 8px;">
+                <button type="button" class="btn-location-action" onclick="startPickingLocationOnMap()">
+                    🗺️ Mover en Mapa
+                </button>
+                <button type="button" class="btn-location-action" onclick="useCurrentLocationAsTarget()">
+                    🎯 Mi GPS Aquí
+                </button>
             </div>
         </div>
 
@@ -550,7 +647,7 @@
             </div>
             <input type="file" id="selfie-input" accept="image/*" capture="environment" style="display: none;" onchange="handleImageUpload(event)">
             
-            <h3 style="margin-bottom: 4px; font-size: 1.2rem;" id="postal-title">Café y Estudio en Casco</h3>
+            <h3 style="margin-bottom: 4px; font-size: 1.2rem;" id="postal-title">Café y Estudio</h3>
             <p style="font-size: 0.8rem; color: var(--accent-neon); font-weight: 700;" id="postal-tagline">✨ Vibe: ☕ Chill</p>
             <p style="font-size: 0.75rem; color: var(--text-gray); margin-top: 4px;">Panamá · 6 de Noviembre, 2026</p>
         </div>
@@ -570,16 +667,17 @@
     let map = null;
     let selectedVibeText = '☕ Chill';
     let fullInviteUrl = '';
-    let currentPlanData = { title: 'Café y estudio en Casco Antiguo', vibe: '☕ Chill' };
+    let currentPlanData = { title: 'Café y estudio', vibe: '☕ Chill' };
     let participantCount = 3;
     let currentStyle = 'postal';
 
-    // Geofencing Real Engine
+    // Geofencing Real Engine & Selector Dinámico
     const GEOFENCE_RADIUS_METERS = 50;
-    const targetCoords = [8.9824, -79.5199];
-    let userCoords = [8.9808, -79.5212]; // ~210m de distancia inicial
+    let targetCoords = [8.9824, -79.5199]; // Casco Antiguo predeterminado
+    let userCoords = [8.9808, -79.5212]; // Distancia inicial
     let isSimulatedArrival = false;
     let hasCelebratedArrival = false;
+    let isSelectingLocationMode = false;
     let geofenceCircle = null;
     let targetMarker = null;
     let userMarker = null;
@@ -587,7 +685,7 @@
     let gpsWatcherId = null;
 
     function calculateHaversine(lat1, lon1, lat2, lon2) {
-        const R = 6371000; // metros
+        const R = 6371000;
         const toRad = deg => (deg * Math.PI) / 180;
         const dLat = toRad(lat2 - lat1);
         const dLon = toRad(lon2 - lon1);
@@ -607,6 +705,94 @@
         const walkingMinutes = Math.max(1, Math.round(distanceMeters / 80));
         const etaLabel = isInside ? 'En el punto' : `~${walkingMinutes} min a pie`;
         return { distanceLabel, etaLabel, isInside };
+    }
+
+    function setTargetLocation(lat, lng, centerMap = false) {
+        targetCoords = [lat, lng];
+        if (geofenceCircle) {
+            geofenceCircle.setLatLng(targetCoords);
+        }
+        if (targetMarker) {
+            targetMarker.setLatLng(targetCoords);
+        }
+        if (routePolyline) {
+            routePolyline.setLatLngs([userCoords, targetCoords]);
+        }
+        if (centerMap && map) {
+            map.panTo(targetCoords, { animate: true });
+        }
+        updateGeofenceTelemetry(userCoords);
+        updateLocationLabels();
+    }
+
+    function updateLocationLabels() {
+        const latStr = Number(targetCoords[0]).toFixed(4);
+        const lngStr = Number(targetCoords[1]).toFixed(4);
+        const badge = document.getElementById('create-coords-badge');
+        const pill = document.getElementById('selected-coords-pill');
+        if (badge) badge.innerText = `${latStr}, ${lngStr}`;
+        if (pill) pill.innerText = `📍 ${latStr}, ${lngStr}`;
+    }
+
+    function startPickingLocationOnMap() {
+        isSelectingLocationMode = true;
+        const radar = document.getElementById('geofence-radar-pill');
+        const planPill = document.getElementById('map-plan-pill');
+        const banner = document.getElementById('map-selection-banner');
+        if (radar) radar.style.display = 'none';
+        if (planPill) planPill.style.display = 'none';
+        if (banner) banner.style.display = 'flex';
+        updateLocationLabels();
+        switchView('view-map');
+        if (map) {
+            setTimeout(() => {
+                map.invalidateSize();
+                map.panTo(targetCoords, { animate: true });
+            }, 200);
+        }
+    }
+
+    function confirmLocationSelection() {
+        isSelectingLocationMode = false;
+        const radar = document.getElementById('geofence-radar-pill');
+        const banner = document.getElementById('map-selection-banner');
+        if (banner) banner.style.display = 'none';
+        if (radar) radar.style.display = 'flex';
+        if (currentPlanData && localStorage.getItem('planealo_active_plan')) {
+            showMapPlanPill(true);
+        }
+        updateLocationLabels();
+        switchView('view-create');
+    }
+
+    function cancelLocationSelection() {
+        isSelectingLocationMode = false;
+        const radar = document.getElementById('geofence-radar-pill');
+        const banner = document.getElementById('map-selection-banner');
+        if (banner) banner.style.display = 'none';
+        if (radar) radar.style.display = 'flex';
+        if (currentPlanData && localStorage.getItem('planealo_active_plan')) {
+            showMapPlanPill(true);
+        }
+        switchView('view-create');
+    }
+
+    function useCurrentLocationAsTarget() {
+        if ('geolocation' in navigator) {
+            navigator.geolocation.getCurrentPosition(
+                pos => {
+                    setTargetLocation(pos.coords.latitude, pos.coords.longitude, true);
+                    alert(`📍 ¡Punto fijado en tus coordenadas GPS actuales! (${pos.coords.latitude.toFixed(4)}, ${pos.coords.longitude.toFixed(4)})`);
+                },
+                () => {
+                    setTargetLocation(userCoords[0], userCoords[1], true);
+                    alert('📍 Punto fijado en la posición de radar.');
+                },
+                { enableHighAccuracy: true, timeout: 8000 }
+            );
+        } else {
+            setTargetLocation(userCoords[0], userCoords[1], true);
+        }
     }
 
     function updateGeofenceTelemetry(coords) {
@@ -652,7 +838,6 @@
             }
         }
 
-        // Actualizar capas en el mapa
         if (userMarker) {
             userMarker.setLatLng(userCoords);
         }
@@ -666,15 +851,39 @@
         const simBtn = document.getElementById('btn-toggle-sim');
         if (isSimulatedArrival) {
             if (simBtn) simBtn.innerText = 'Restablecer GPS';
-            updateGeofenceTelemetry([8.98237, -79.51988]); // Dentro del radio (< 5m)
+            updateGeofenceTelemetry([targetCoords[0] + 0.00003, targetCoords[1] + 0.00003]);
         } else {
             hasCelebratedArrival = false;
             if (simBtn) simBtn.innerText = 'Simular Llegada';
-            updateGeofenceTelemetry([8.9808, -79.5212]); // Fuera (~210m)
+            updateGeofenceTelemetry([targetCoords[0] - 0.0016, targetCoords[1] - 0.0013]);
         }
     }
 
     window.addEventListener('DOMContentLoaded', () => {
+        const urlParams = new URLSearchParams(window.location.search);
+        const planTitleParam = urlParams.get('t');
+        const planVibeParam = urlParams.get('v');
+        const latParam = urlParams.get('lat');
+        const lngParam = urlParams.get('lng');
+        const seenWelcome = localStorage.getItem('planealo_onboarding_seen');
+        const savedActivePlan = localStorage.getItem('planealo_active_plan');
+
+        // Parseo de coordenadas prioritarias desde URL
+        if (latParam && lngParam) {
+            const pLat = parseFloat(latParam);
+            const pLng = parseFloat(lngParam);
+            if (!isNaN(pLat) && !isNaN(pLng)) {
+                targetCoords = [pLat, pLng];
+            }
+        } else if (savedActivePlan) {
+            try {
+                const parsedPlan = JSON.parse(savedActivePlan);
+                if (parsedPlan.lat && parsedPlan.lng) {
+                    targetCoords = [Number(parsedPlan.lat), Number(parsedPlan.lng)];
+                }
+            } catch (e) {}
+        }
+
         map = L.map('map-container', { zoomControl: false }).setView(targetCoords, 16);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '© OpenStreetMap'
@@ -689,15 +898,27 @@
             weight: 2
         }).addTo(map);
 
-        // Marcador del punto de encuentro
+        // Marcador del punto de encuentro (Arrastrable e interactivo)
         const targetIcon = L.divIcon({
             className: 'custom-target-marker',
-            html: '<div style="background:#CCFF00; color:#0A0C0B; font-weight:800; font-size:12px; padding:4px 8px; border-radius:12px; border:2px solid #FFFFFF; box-shadow:0 0 15px rgba(204,255,0,0.8); display:flex; align-items:center; gap:4px;">📍 Punto</div>',
+            html: '<div style="background:#CCFF00; color:#0A0C0B; font-weight:800; font-size:12px; padding:4px 8px; border-radius:12px; border:2px solid #FFFFFF; box-shadow:0 0 15px rgba(204,255,0,0.8); display:flex; align-items:center; gap:4px; cursor:move;">📍 Punto</div>',
             iconSize: [60, 26],
             iconAnchor: [30, 13]
         });
-        targetMarker = L.marker(targetCoords, { icon: targetIcon }).addTo(map)
-            .bindPopup('<b>Punto de Encuentro</b><br>Perímetro de geocerca: 50m');
+        targetMarker = L.marker(targetCoords, { icon: targetIcon, draggable: true }).addTo(map)
+            .bindPopup('<b>Punto de Encuentro</b><br>Arrastra o toca el mapa para moverlo');
+
+        targetMarker.on('dragend', e => {
+            const pos = e.target.getLatLng();
+            setTargetLocation(pos.lat, pos.lng, false);
+        });
+
+        // Interacción de toque/clic en el mapa para ubicar el punto
+        map.on('click', e => {
+            if (isSelectingLocationMode) {
+                setTargetLocation(e.latlng.lat, e.latlng.lng, true);
+            }
+        });
 
         // Marcador del usuario
         const userIcon = L.divIcon({
@@ -717,8 +938,9 @@
             opacity: 0.85
         }).addTo(map);
 
-        // Inicializar telemetría
+        // Inicializar telemetría y etiquetas
         updateGeofenceTelemetry(userCoords);
+        updateLocationLabels();
 
         // GPS Real watcher
         if ('geolocation' in navigator) {
@@ -735,24 +957,29 @@
             );
         }
 
-        const urlParams = new URLSearchParams(window.location.search);
-        const planTitleParam = urlParams.get('t');
-        const planVibeParam = urlParams.get('v');
-        const seenWelcome = localStorage.getItem('planealo_onboarding_seen');
-        const savedActivePlan = localStorage.getItem('planealo_active_plan');
-
         if (planTitleParam) {
             const decodedTitle = decodeURIComponent(planTitleParam);
             const decodedVibe = planVibeParam ? decodeURIComponent(planVibeParam) : '☕ Chill';
 
-            currentPlanData = { title: decodedTitle, vibe: decodedVibe };
+            currentPlanData = {
+                title: decodedTitle,
+                vibe: decodedVibe,
+                lat: targetCoords[0],
+                lng: targetCoords[1]
+            };
             updateInviteScreen();
             
             document.getElementById('join-btn').style.display = 'block';
             switchView('view-invite');
         } else {
             if (savedActivePlan) {
-                currentPlanData = JSON.parse(savedActivePlan);
+                try {
+                    currentPlanData = JSON.parse(savedActivePlan);
+                    if (currentPlanData.lat && currentPlanData.lng) {
+                        targetCoords = [Number(currentPlanData.lat), Number(currentPlanData.lng)];
+                        setTargetLocation(targetCoords[0], targetCoords[1], true);
+                    }
+                } catch (e) {}
                 showMapPlanPill(true);
             }
 
@@ -782,6 +1009,7 @@
     }
 
     function goToCreatePlan() {
+        updateLocationLabels();
         switchView('view-create');
     }
 
@@ -793,7 +1021,12 @@
 
     function generateInvite() {
         const title = document.getElementById('plan-title').value || 'Plan en grupo';
-        currentPlanData = { title: title, vibe: selectedVibeText };
+        currentPlanData = {
+            title: title,
+            vibe: selectedVibeText,
+            lat: targetCoords[0],
+            lng: targetCoords[1]
+        };
 
         localStorage.setItem('planealo_active_plan', JSON.stringify(currentPlanData));
 
@@ -803,8 +1036,10 @@
         const domain = window.location.host || 'planealo-aqui.netlify.app';
         const encodedTitle = encodeURIComponent(title);
         const encodedVibe = encodeURIComponent(selectedVibeText);
+        const lat = Number(targetCoords[0]).toFixed(5);
+        const lng = Number(targetCoords[1]).toFixed(5);
         
-        fullInviteUrl = `https://${domain}/?t=${encodedTitle}&v=${encodedVibe}`;
+        fullInviteUrl = `https://${domain}/?t=${encodedTitle}&v=${encodedVibe}&lat=${lat}&lng=${lng}`;
         document.getElementById('invite-url-text').innerText = fullInviteUrl;
         
         switchView('view-invite');
@@ -830,6 +1065,13 @@
 
     function openActivePlan() {
         updateInviteScreen();
+        const domain = window.location.host || 'planealo-aqui.netlify.app';
+        const encodedTitle = encodeURIComponent(currentPlanData.title);
+        const encodedVibe = encodeURIComponent(currentPlanData.vibe);
+        const lat = Number(targetCoords[0]).toFixed(5);
+        const lng = Number(targetCoords[1]).toFixed(5);
+        fullInviteUrl = `https://${domain}/?t=${encodedTitle}&v=${encodedVibe}&lat=${lat}&lng=${lng}`;
+        document.getElementById('invite-url-text').innerText = fullInviteUrl;
         document.getElementById('join-btn').style.display = 'none';
         switchView('view-invite');
     }
@@ -847,7 +1089,6 @@
     }
 
     function finishPlanAndCapture() {
-        // Limpiar plan activo del localStorage y llevar directo al generador de recuerdos
         localStorage.removeItem('planealo_active_plan');
         showMapPlanPill(false);
         updateInviteScreen();
@@ -915,6 +1156,24 @@
         ctx.closePath();
     }
 
+    function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
+        const words = text.split(' ');
+        let line = '';
+        for (let n = 0; n < words.length; n++) {
+            const testLine = line + words[n] + ' ';
+            const metrics = ctx.measureText(testLine);
+            const testWidth = metrics.width;
+            if (testWidth > maxWidth && n > 0) {
+                ctx.fillText(line, x, y);
+                line = words[n] + ' ';
+                y += lineHeight;
+            } else {
+                line = testLine;
+            }
+        }
+        ctx.fillText(line, x, y);
+    }
+
     async function generateMemoryCanvas() {
         const canvas = document.createElement('canvas');
         canvas.width = 1080;
@@ -922,208 +1181,162 @@
         const ctx = canvas.getContext('2d');
         if (!ctx) return null;
 
+        const isPostal = currentStyle === 'postal';
+        const isMeme = currentStyle === 'meme';
+
         // 1. Fondo Dark Pro
-        const bgGradient = ctx.createLinearGradient(0, 0, 1080, 1350);
-        bgGradient.addColorStop(0, '#121715');
-        bgGradient.addColorStop(0.5, '#0A0C0B');
-        bgGradient.addColorStop(1, '#050706');
-        ctx.fillStyle = bgGradient;
+        const bgGrad = ctx.createLinearGradient(0, 0, 0, 1350);
+        bgGrad.addColorStop(0, '#111513');
+        bgGrad.addColorStop(1, '#050706');
+        ctx.fillStyle = bgGrad;
         ctx.fillRect(0, 0, 1080, 1350);
 
-        // Marco exterior
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
-        ctx.lineWidth = 2;
-        drawRoundedRect(ctx, 30, 30, 1020, 1290, 36);
-        ctx.stroke();
+        // Grid sutil
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)';
+        ctx.lineWidth = 1;
+        for (let x = 0; x < 1080; x += 60) {
+            ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, 1350); ctx.stroke();
+        }
+        for (let y = 0; y < 1350; y += 60) {
+            ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(1080, y); ctx.stroke();
+        }
 
-        ctx.strokeStyle = 'rgba(204, 255, 0, 0.2)';
-        ctx.lineWidth = 1.5;
-        drawRoundedRect(ctx, 42, 42, 996, 1266, 28);
-        ctx.stroke();
+        // 2. Tarjeta Glassmorphic
+        const cardX = 70;
+        const cardY = 80;
+        const cardW = 940;
+        const cardH = 1190;
+        const cardRadius = 36;
 
-        // 2. Encabezado de Marca
-        ctx.fillStyle = '#161A18';
-        drawRoundedRect(ctx, 70, 70, 320, 60, 30);
-        ctx.fill();
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
-
-        ctx.fillStyle = '#FFFFFF';
-        ctx.font = '800 24px "Plus Jakarta Sans", sans-serif';
-        ctx.textAlign = 'left';
-        ctx.fillText('PLANEALO AQUÍ', 96, 108);
-        ctx.fillStyle = '#CCFF00';
-        ctx.fillText('⚡', 290, 108);
-
-        // Sello Postal Circular
         ctx.save();
-        ctx.strokeStyle = '#CCFF00';
-        ctx.lineWidth = 2.5;
-        ctx.beginPath();
-        ctx.arc(970, 100, 44, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.fillStyle = '#CCFF00';
-        ctx.font = '800 11px "Plus Jakarta Sans", sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText('PANAMÁ', 970, 95);
-        ctx.font = '700 9px "Plus Jakarta Sans", sans-serif';
-        ctx.fillText('2026', 970, 112);
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.65)';
+        ctx.shadowBlur = 50;
+        ctx.shadowOffsetY = 25;
+        drawRoundedRect(ctx, cardX, cardY, cardW, cardH, cardRadius);
+        ctx.fillStyle = '#161A18';
+        ctx.fill();
         ctx.restore();
 
-        // 3. Contenedor de Fotografía
-        const photoX = 70;
-        const photoY = 160;
-        const photoW = 940;
-        const photoH = 580;
+        ctx.strokeStyle = isMeme ? '#FF0055' : 'rgba(204, 255, 0, 0.35)';
+        ctx.lineWidth = 2;
+        drawRoundedRect(ctx, cardX, cardY, cardW, cardH, cardRadius);
+        ctx.stroke();
+
+        // 3. Encabezado de Marca
+        ctx.fillStyle = '#FFFFFF';
+        ctx.font = '800 32px "Plus Jakarta Sans", sans-serif';
+        ctx.fillText('PLANEALO AQUÍ', cardX + 45, cardY + 70);
+
+        ctx.fillStyle = '#CCFF00';
+        ctx.font = '800 24px "Plus Jakarta Sans", sans-serif';
+        ctx.fillText('⚡ ENCUENTRO OFICIAL', cardX + 45, cardY + 105);
+
+        // 4. Matasellos Geográfico
+        const stampX = cardX + cardW - 130;
+        const stampY = cardY + 75;
+        ctx.strokeStyle = '#CCFF00';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(stampX, stampY, 44, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.font = '800 11px "Plus Jakarta Sans", sans-serif';
+        ctx.fillStyle = '#CCFF00';
+        ctx.textAlign = 'center';
+        ctx.fillText('CHECK-IN ✅', stampX, stampY - 8);
+        ctx.fillText('50M GEOFENCE', stampX, stampY + 8);
+        ctx.fillText('VERIFIED', stampX, stampY + 22);
+        ctx.textAlign = 'left';
+
+        // 5. Fotografía o Selfie
+        const imgBoxX = cardX + 45;
+        const imgBoxY = cardY + 145;
+        const imgBoxW = cardW - 90;
+        const imgBoxH = 560;
+        const imgRadius = 24;
 
         const uploadedImg = document.getElementById('uploaded-photo');
-        if (uploadedImg && uploadedImg.src && uploadedImg.style.display !== 'none') {
-            try {
-                ctx.save();
-                drawRoundedRect(ctx, photoX, photoY, photoW, photoH, 28);
-                ctx.clip();
+        const hasPhoto = uploadedImg && uploadedImg.src && uploadedImg.style.display !== 'none';
 
-                const imgRatio = uploadedImg.naturalWidth / uploadedImg.naturalHeight;
-                const targetRatio = photoW / photoH;
-                let sWidth = uploadedImg.naturalWidth;
-                let sHeight = uploadedImg.naturalHeight;
-                let sx = 0;
-                let sy = 0;
+        ctx.save();
+        drawRoundedRect(ctx, imgBoxX, imgBoxY, imgBoxW, imgBoxH, imgRadius);
+        ctx.clip();
 
-                if (imgRatio > targetRatio) {
-                    sWidth = uploadedImg.naturalHeight * targetRatio;
-                    sx = (uploadedImg.naturalWidth - sWidth) / 2;
-                } else {
-                    sHeight = uploadedImg.naturalWidth / targetRatio;
-                    sy = (uploadedImg.naturalHeight - sHeight) / 2;
-                }
-
-                ctx.drawImage(uploadedImg, sx, sy, sWidth, sHeight, photoX, photoY, photoW, photoH);
-
-                const imgOverlay = ctx.createLinearGradient(0, photoY + photoH - 120, 0, photoY + photoH);
-                imgOverlay.addColorStop(0, 'transparent');
-                imgOverlay.addColorStop(1, 'rgba(10, 12, 11, 0.7)');
-                ctx.fillStyle = imgOverlay;
-                ctx.fillRect(photoX, photoY + photoH - 120, photoW, 120);
-                ctx.restore();
-
-                ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
-                ctx.lineWidth = 2;
-                drawRoundedRect(ctx, photoX, photoY, photoW, photoH, 28);
-                ctx.stroke();
-            } catch (e) {
-                console.error(e);
-            }
+        if (hasPhoto) {
+            ctx.drawImage(uploadedImg, imgBoxX, imgBoxY, imgBoxW, imgBoxH);
         } else {
-            ctx.fillStyle = '#161A18';
-            drawRoundedRect(ctx, photoX, photoY, photoW, photoH, 28);
-            ctx.fill();
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
-            ctx.lineWidth = 2;
-            ctx.stroke();
+            const photoGrad = ctx.createLinearGradient(imgBoxX, imgBoxY, imgBoxX + imgBoxW, imgBoxY + imgBoxH);
+            photoGrad.addColorStop(0, '#1E2421');
+            photoGrad.addColorStop(1, '#111513');
+            ctx.fillStyle = photoGrad;
+            ctx.fillRect(imgBoxX, imgBoxY, imgBoxW, imgBoxH);
 
-            ctx.font = '100px sans-serif';
+            ctx.fillStyle = '#CCFF00';
+            ctx.font = '72px sans-serif';
             ctx.textAlign = 'center';
-            const emoji = currentPlanData.vibe.split(' ')[0] || '📸';
-            ctx.fillText(emoji, photoX + photoW / 2, photoY + photoH / 2 - 20);
+            ctx.fillText('📸', imgBoxX + imgBoxW / 2, imgBoxY + imgBoxH / 2 - 10);
 
             ctx.fillStyle = '#FFFFFF';
-            ctx.font = '800 24px "Plus Jakarta Sans", sans-serif';
-            ctx.fillText('Recuerdo Colectivo en Vivo', photoX + photoW / 2, photoY + photoH / 2 + 50);
+            ctx.font = '700 24px "Plus Jakarta Sans", sans-serif';
+            ctx.fillText('Experiencia Vivida en Grupo', imgBoxX + imgBoxW / 2, imgBoxY + imgBoxH / 2 + 50);
 
             ctx.fillStyle = '#8A9590';
-            ctx.font = '500 16px "Plus Jakarta Sans", sans-serif';
-            ctx.fillText('Foto tomada y confirmada en el punto de encuentro', photoX + photoW / 2, photoY + photoH / 2 + 80);
+            ctx.font = '500 18px "Plus Jakarta Sans", sans-serif';
+            ctx.fillText('Conexión real sin distracciones', imgBoxX + imgBoxW / 2, imgBoxY + imgBoxH / 2 + 82);
+            ctx.textAlign = 'left';
         }
+        ctx.restore();
 
-        // 4. Etiqueta de Estilo
-        const styleLabel = currentStyle === 'postal' ? '✉️ POSTAL PRO' : currentStyle === 'collage' ? '📸 COLLAGE COLECTIVO' : '🤪 VIBE / MEME';
-        ctx.fillStyle = 'rgba(204, 255, 0, 0.12)';
-        drawRoundedRect(ctx, photoX, 770, 220, 36, 18);
-        ctx.fill();
-        ctx.strokeStyle = '#CCFF00';
-        ctx.lineWidth = 1;
-        ctx.stroke();
+        // 6. Información del Plan
+        const infoY = imgBoxY + imgBoxH + 45;
 
         ctx.fillStyle = '#CCFF00';
-        ctx.font = '800 13px "Plus Jakarta Sans", sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText(styleLabel, photoX + 110, 794);
+        ctx.font = '800 20px "Plus Jakarta Sans", sans-serif';
+        ctx.fillText(`VIBE ${currentPlanData.vibe.toUpperCase()}`, cardX + 45, infoY);
 
-        // 5. Título del Plan
         ctx.fillStyle = '#FFFFFF';
         ctx.font = '800 42px "Plus Jakarta Sans", sans-serif';
-        ctx.textAlign = 'left';
-        let displayTitle = currentPlanData.title;
-        if (ctx.measureText(displayTitle).width > 920) {
-            while (ctx.measureText(displayTitle + '...').width > 920 && displayTitle.length > 0) {
-                displayTitle = displayTitle.slice(0, -1);
-            }
-            displayTitle += '...';
-        }
-        ctx.fillText(displayTitle, photoX, 855);
+        const displayTitle = currentPlanData.title || 'Café y estudio';
+        wrapText(ctx, displayTitle, cardX + 45, infoY + 48, cardW - 90, 48);
 
-        // 6. Metadata
-        ctx.fillStyle = '#8A9590';
-        ctx.font = '600 20px "Plus Jakarta Sans", sans-serif';
-        ctx.fillText(`✨ ${currentPlanData.vibe}   ·   📍 Casco Antiguo, Panamá   ·   📅 6 de Noviembre, 2026`, photoX, 895);
-
-        // Línea divisoria
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
-        ctx.lineWidth = 1.5;
-        ctx.beginPath();
-        ctx.moveTo(photoX, 930);
-        ctx.lineTo(photoX + photoW, 930);
-        ctx.stroke();
-
-        // 7. Cita / Reflexión
-        ctx.fillStyle = '#161A18';
-        drawRoundedRect(ctx, photoX, 955, photoW, 145, 24);
+        // 7. Cita Filosófica
+        const quoteBoxY = infoY + 120;
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.04)';
+        drawRoundedRect(ctx, cardX + 45, quoteBoxY, cardW - 90, 85, 16);
         ctx.fill();
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
 
+        ctx.fillStyle = '#FFFFFF';
+        ctx.font = '600 20px "Plus Jakarta Sans", sans-serif';
         const quoteText = document.getElementById('memory-quote').innerText;
-        ctx.fillStyle = '#E6E8E7';
-        ctx.font = 'italic 600 22px "Plus Jakarta Sans", sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText(quoteText, photoX + photoW / 2, 1020);
+        wrapText(ctx, quoteText, cardX + 70, quoteBoxY + 36, cardW - 140, 26);
 
         ctx.fillStyle = '#CCFF00';
-        ctx.font = '800 16px "Plus Jakarta Sans", sans-serif';
-        ctx.fillText('— @amabo', photoX + photoW / 2, 1060);
+        ctx.font = '800 18px "Plus Jakarta Sans", sans-serif';
+        ctx.textAlign = 'right';
+        ctx.fillText('@amabo', cardX + cardW - 70, quoteBoxY + 68);
+        ctx.textAlign = 'left';
 
         // 8. Participantes
+        const crewY = quoteBoxY + 115;
         ctx.fillStyle = '#8A9590';
-        ctx.font = '700 15px "Plus Jakarta Sans", sans-serif';
-        ctx.textAlign = 'left';
-        ctx.fillText('PARTICIPANTES EN EL PUNTO:', photoX, 1140);
+        ctx.font = '700 16px "Plus Jakarta Sans", sans-serif';
+        ctx.fillText('CONFIRMADOS EN EL PUNTO:', cardX + 45, crewY);
 
-        const attendees = [
-            { name: 'Tú', role: 'Host', avatar: '👤' },
-            { name: 'Sofía R.', avatar: '👩‍💻' },
-            { name: 'Mateo V.', avatar: '🧑‍🎨' }
-        ];
+        const attendees = ['Tú (Host)', 'Sofía R.', 'Mateo V.'];
+        let currentBadgeX = cardX + 45;
+        const badgeY = crewY + 12;
 
-        let currentBadgeX = photoX;
-        const badgeY = 1160;
-        attendees.forEach((att) => {
-            const text = `${att.avatar} ${att.name}${att.role ? ` (${att.role})` : ''} ✅`;
+        attendees.forEach(name => {
             ctx.font = '700 16px "Plus Jakarta Sans", sans-serif';
-            const textWidth = ctx.measureText(text).width;
+            const textWidth = ctx.measureText(name).width;
             const badgeW = textWidth + 30;
 
-            ctx.fillStyle = '#161A18';
-            drawRoundedRect(ctx, currentBadgeX, badgeY, badgeW, 40, 20);
+            ctx.fillStyle = 'rgba(204, 255, 0, 0.12)';
+            drawRoundedRect(ctx, currentBadgeX, badgeY, badgeW, 36, 12);
             ctx.fill();
-            ctx.strokeStyle = att.role === 'Host' ? '#CCFF00' : 'rgba(255, 255, 255, 0.12)';
-            ctx.lineWidth = 1.5;
-            ctx.stroke();
 
-            ctx.fillStyle = att.role === 'Host' ? '#CCFF00' : '#FFFFFF';
-            ctx.fillText(text, currentBadgeX + 15, badgeY + 26);
+            ctx.fillStyle = '#CCFF00';
+            ctx.fillText(name, currentBadgeX + 15, badgeY + 24);
 
             currentBadgeX += badgeW + 14;
         });
@@ -1167,9 +1380,7 @@
                         text: `¡Mira nuestro recuerdo de "${currentPlanData.title}" en Planealo Aquí! ⚡\n— @amabo`,
                         files: [file]
                     });
-                } catch (e) {
-                    // dismissed or error
-                }
+                } catch (e) {}
             } else if (navigator.share) {
                 try {
                     await navigator.share({
@@ -1193,6 +1404,5 @@
       .catch((err) => console.log('Error al registrar Service Worker', err));
   }
 </script>
-
 </body>
 </html>

@@ -267,6 +267,41 @@ body {
   color: #CCFF00;
 }
 
+/* Selector dinámico de ubicación */
+.btn-location-action {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: var(--text-white);
+  padding: 9px 12px;
+  border-radius: 12px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: all 0.2s ease;
+}
+.btn-location-action:hover,
+.btn-location-action:active {
+  background: rgba(204, 255, 0, 0.12);
+  border-color: var(--accent-neon);
+  color: var(--accent-neon);
+}
+.selector-banner {
+  background: rgba(22, 26, 24, 0.96);
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--accent-neon);
+  padding: 12px 14px;
+  border-radius: 18px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
 .brand-pill-dark {
   background: rgba(22, 26, 24, 0.85);
   backdrop-filter: blur(16px);

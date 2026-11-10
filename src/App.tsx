@@ -12,6 +12,8 @@ import {
 interface PlanData {
   title: string;
   vibe: string;
+  lat?: number;
+  lng?: number;
 }
 
 const VIBE_OPTIONS = [
@@ -54,7 +56,34 @@ export default function App() {
   // ========================================
   // MOTOR DE GEOFENCING Y TELEMETRÍA GPS
   // ========================================
-  const targetCoords: [number, number] = DEFAULT_MEETING_POINT;
+  const [targetCoords, setTargetCoords] = useState<[number, number]>(() => {
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      const latParam = urlParams.get('lat');
+      const lngParam = urlParams.get('lng');
+      if (latParam && lngParam) {
+        const pLat = parseFloat(latParam);
+        const pLng = parseFloat(lngParam);
+        if (!isNaN(pLat) && !isNaN(pLng)) {
+          return [pLat, pLng];
+        }
+      }
+      try {
+        const saved = localStorage.getItem('planealo_active_plan');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (parsed.lat && parsed.lng) {
+            return [Number(parsed.lat), Number(parsed.lng)];
+          }
+        }
+      } catch {
+        // safe fallback
+      }
+    }
+    return DEFAULT_MEETING_POINT;
+  });
+
+  const [isSelectingLocationMode, setIsSelectingLocationMode] = useState<boolean>(false);
   const [userCoords, setUserCoords] = useState<[number, number]>([8.9839, -79.5212]); // Inicial: ~210m del punto
   const [isSimulatedArrival, setIsSimulatedArrival] = useState<boolean>(false);
   const [hasCelebratedArrival, setHasCelebratedArrival] = useState<boolean>(false);
@@ -127,12 +156,12 @@ export default function App() {
   const toggleSimulateArrival = () => {
     if (!isSimulatedArrival) {
       setIsSimulatedArrival(true);
-      // Coordenadas a menos de 5m del punto de encuentro
-      setUserCoords([8.98242, -79.51992]);
+      // Coordenadas a menos de 5m del punto de encuentro dinámico
+      setUserCoords([targetCoords[0] + 0.00003, targetCoords[1] + 0.00003]);
     } else {
       setIsSimulatedArrival(false);
-      // Posición fuera del perímetro (~210m)
-      setUserCoords([8.9839, -79.5212]);
+      // Posición fuera del perímetro (~210m del punto dinámico)
+      setUserCoords([targetCoords[0] - 0.0016, targetCoords[1] - 0.0013]);
     }
   };
 
@@ -143,8 +172,18 @@ export default function App() {
     const urlParams = new URLSearchParams(window.location.search);
     const titleParam = urlParams.get('t');
     const vibeParam = urlParams.get('v');
+    const latParam = urlParams.get('lat');
+    const lngParam = urlParams.get('lng');
     const planParam = urlParams.get('plan');
     const seenWelcome = localStorage.getItem('planealo_onboarding_seen');
+
+    if (latParam && lngParam) {
+      const pLat = parseFloat(latParam);
+      const pLng = parseFloat(lngParam);
+      if (!isNaN(pLat) && !isNaN(pLng)) {
+        setTargetCoords([pLat, pLng]);
+      }
+    }
 
     if (titleParam || vibeParam) {
       const decodedTitle = titleParam ? decodeURIComponent(titleParam) : 'Plan en grupo';
@@ -155,7 +194,9 @@ export default function App() {
       setPostalTitle(decodedTitle);
       setIsGuestMode(true);
       const currentDomain = window.location.host || 'planealo-aqui.netlify.app';
-      setInviteUrl(`https://${currentDomain}/?t=${encodeURIComponent(decodedTitle)}&v=${encodeURIComponent(decodedVibe)}`);
+      const lat = latParam || targetCoords[0].toFixed(5);
+      const lng = lngParam || targetCoords[1].toFixed(5);
+      setInviteUrl(`https://${currentDomain}/?t=${encodeURIComponent(decodedTitle)}&v=${encodeURIComponent(decodedVibe)}&lat=${lat}&lng=${lng}`);
       switchView('view-invite');
     } else if (planParam) {
       loadSharedPlan(planParam);
@@ -213,26 +254,32 @@ export default function App() {
       geofenceCircleRef.current.setLatLng(targetCoords);
     }
 
-    // 2. Marcador del Punto de Encuentro (Destino)
+    // 2. Marcador del Punto de Encuentro (Destino dinámico y arrastrable)
     if (!targetMarkerRef.current) {
       const targetIcon = L.divIcon({
         className: 'custom-target-marker',
         html: `
-          <div style="background: #161A18; border: 2px solid #CCFF00; border-radius: 50%; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 16px rgba(204,255,0,0.5); font-size: 20px;">
+          <div style="background: #161A18; border: 2px solid #CCFF00; border-radius: 50%; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 16px rgba(204,255,0,0.5); font-size: 20px; cursor: move;">
             📍
           </div>
         `,
         iconSize: [40, 40],
         iconAnchor: [20, 20],
       });
-      targetMarkerRef.current = L.marker(targetCoords, { icon: targetIcon })
+      targetMarkerRef.current = L.marker(targetCoords, { icon: targetIcon, draggable: true })
         .addTo(map)
         .bindPopup(`
           <div style="text-align: center; padding: 4px;">
             <b style="color: #CCFF00; font-size: 13px;">Punto de Encuentro 📍</b>
-            <p style="color: #8A9590; font-size: 11px; margin-top: 2px;">Geocerca activa: Radio de 50m</p>
+            <p style="color: #8A9590; font-size: 11px; margin-top: 2px;">Arrastra o toca para reubicar</p>
           </div>
         `);
+
+      targetMarkerRef.current.on('dragend', (e) => {
+        const marker = e.target as L.Marker;
+        const pos = marker.getLatLng();
+        setTargetCoords([pos.lat, pos.lng]);
+      });
     } else {
       targetMarkerRef.current.setLatLng(targetCoords);
     }
@@ -286,6 +333,23 @@ export default function App() {
     }
   }, [userCoords, targetCoords, isInsideGeofence, distanceETA.distanceLabel, distanceETA.etaLabel]);
 
+  // Manejador de toques en el mapa en modo de selección de ubicación
+  useEffect(() => {
+    if (!mapInstanceRef.current) return;
+    const map = mapInstanceRef.current;
+
+    const handleMapClick = (e: L.LeafletMouseEvent) => {
+      if (isSelectingLocationMode) {
+        setTargetCoords([e.latlng.lat, e.latlng.lng]);
+      }
+    };
+
+    map.on('click', handleMapClick);
+    return () => {
+      map.off('click', handleMapClick);
+    };
+  }, [isSelectingLocationMode]);
+
   const switchView = (viewId: string) => {
     setCurrentView(viewId);
     if (viewId === 'view-map') {
@@ -314,9 +378,54 @@ export default function App() {
     setSelectedVibeText(`${emoji} ${vibeName}`);
   };
 
+  const startPickingLocationOnMap = () => {
+    setIsSelectingLocationMode(true);
+    switchView('view-map');
+    if (mapInstanceRef.current) {
+      setTimeout(() => {
+        mapInstanceRef.current?.invalidateSize();
+        mapInstanceRef.current?.panTo(targetCoords, { animate: true });
+      }, 200);
+    }
+  };
+
+  const confirmLocationSelection = () => {
+    setIsSelectingLocationMode(false);
+    switchView('view-create');
+  };
+
+  const cancelLocationSelection = () => {
+    setIsSelectingLocationMode(false);
+    switchView('view-create');
+  };
+
+  const useCurrentLocationAsTarget = () => {
+    if (typeof navigator !== 'undefined' && 'geolocation' in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          setTargetCoords([pos.coords.latitude, pos.coords.longitude]);
+          if (mapInstanceRef.current) {
+            mapInstanceRef.current.panTo([pos.coords.latitude, pos.coords.longitude], { animate: true });
+          }
+        },
+        () => {
+          setTargetCoords([userCoords[0], userCoords[1]]);
+        },
+        { enableHighAccuracy: true, timeout: 8000 }
+      );
+    } else {
+      setTargetCoords([userCoords[0], userCoords[1]]);
+    }
+  };
+
   const generateInvite = () => {
     const title = planTitle.trim() || 'Plan en grupo';
-    const planData: PlanData = { title, vibe: selectedVibeText };
+    const planData: PlanData = {
+      title,
+      vibe: selectedVibeText,
+      lat: targetCoords[0],
+      lng: targetCoords[1],
+    };
 
     // Guardar como plan activo en localStorage para que el Host lo tenga persistente
     try {
@@ -333,8 +442,10 @@ export default function App() {
     const currentDomain = (typeof window !== 'undefined' && window.location.host) || 'planealo-aqui.netlify.app';
     const encodedTitle = encodeURIComponent(title);
     const encodedVibe = encodeURIComponent(selectedVibeText);
+    const lat = targetCoords[0].toFixed(5);
+    const lng = targetCoords[1].toFixed(5);
 
-    const fullInviteUrl = `https://${currentDomain}/?t=${encodedTitle}&v=${encodedVibe}`;
+    const fullInviteUrl = `https://${currentDomain}/?t=${encodedTitle}&v=${encodedVibe}&lat=${lat}&lng=${lng}`;
     setInviteUrl(fullInviteUrl);
 
     switchView('view-invite');
@@ -347,7 +458,9 @@ export default function App() {
       const currentDomain = (typeof window !== 'undefined' && window.location.host) || 'planealo-aqui.netlify.app';
       const encodedTitle = encodeURIComponent(activePlan.title);
       const encodedVibe = encodeURIComponent(activePlan.vibe);
-      setInviteUrl(`https://${currentDomain}/?t=${encodedTitle}&v=${encodedVibe}`);
+      const lat = (activePlan.lat ?? targetCoords[0]).toFixed(5);
+      const lng = (activePlan.lng ?? targetCoords[1]).toFixed(5);
+      setInviteUrl(`https://${currentDomain}/?t=${encodedTitle}&v=${encodedVibe}&lat=${lat}&lng=${lng}`);
     }
     setIsGuestMode(false);
     switchView('view-invite');
@@ -533,37 +646,70 @@ export default function App() {
               </button>
             </div>
 
-            {/* Radar GPS de Geocerca en Tiempo Real */}
-            <div className={`radar-pill ${isInsideGeofence ? 'inside' : ''}`}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <div
-                  className="radar-pulse-dot"
-                  style={{ backgroundColor: isInsideGeofence ? '#CCFF00' : '#8A9590' }}
-                />
-                <div>
-                  <span
-                    style={{
-                      fontWeight: 800,
-                      color: isInsideGeofence ? '#CCFF00' : '#FFFFFF',
-                      display: 'block',
-                      fontSize: '0.8rem',
-                    }}
+            {/* Banner interactivo de selección de punto en mapa */}
+            {isSelectingLocationMode ? (
+              <div className="selector-banner">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--accent-neon)', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span className="radar-pulse-dot" style={{ backgroundColor: '#CCFF00', boxShadow: '0 0 8px #CCFF00' }}></span>
+                    SELECCIONA EL ENCUENTRO
+                  </span>
+                  <button
+                    onClick={cancelLocationSelection}
+                    style={{ background: 'none', border: 'none', color: 'var(--text-gray)', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer' }}
                   >
-                    {isInsideGeofence
-                      ? '📍 DENTRO DEL PERÍMETRO (<50m)'
-                      : `RADAR GPS: A ${distanceETA.distanceLabel}`}
+                    ✕ Cancelar
+                  </button>
+                </div>
+                <p style={{ fontSize: '0.78rem', color: 'var(--text-white)', margin: 0 }}>
+                  Toca cualquier lugar del mapa para reubicar el pin o arrástralo directamente.
+                </p>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.72rem', color: 'var(--text-gray)', background: 'rgba(255,255,255,0.06)', padding: '5px 8px', borderRadius: '8px', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    📍 {targetCoords[0].toFixed(4)}, {targetCoords[1].toFixed(4)}
                   </span>
-                  <span style={{ fontSize: '0.7rem', color: 'var(--text-gray)' }}>
-                    {isInsideGeofence
-                      ? '✅ Check-in automático confirmado'
-                      : `${distanceETA.etaLabel} · Radio Geocerca: 50m`}
-                  </span>
+                  <button
+                    className="radar-btn-sim"
+                    style={{ background: 'var(--accent-neon)', color: '#0A0C0B', border: 'none', padding: '5px 12px', fontWeight: 800 }}
+                    onClick={confirmLocationSelection}
+                  >
+                    Confirmar Punto ✅
+                  </button>
                 </div>
               </div>
-              <button className="radar-btn-sim" onClick={toggleSimulateArrival}>
-                {isSimulatedArrival ? 'GPS Real' : 'Simular Llegada'}
-              </button>
-            </div>
+            ) : (
+              /* Radar GPS de Geocerca en Tiempo Real */
+              <div className={`radar-pill ${isInsideGeofence ? 'inside' : ''}`}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <div
+                    className="radar-pulse-dot"
+                    style={{ backgroundColor: isInsideGeofence ? '#CCFF00' : '#8A9590' }}
+                  />
+                  <div>
+                    <span
+                      style={{
+                        fontWeight: 800,
+                        color: isInsideGeofence ? '#CCFF00' : '#FFFFFF',
+                        display: 'block',
+                        fontSize: '0.8rem',
+                      }}
+                    >
+                      {isInsideGeofence
+                        ? '📍 DENTRO DEL PERÍMETRO (<50m)'
+                        : `RADAR GPS: A ${distanceETA.distanceLabel}`}
+                    </span>
+                    <span style={{ fontSize: '0.7rem', color: 'var(--text-gray)' }}>
+                      {isInsideGeofence
+                        ? '✅ Check-in automático confirmado'
+                        : `${distanceETA.etaLabel} · Radio Geocerca: 50m`}
+                    </span>
+                  </div>
+                </div>
+                <button className="radar-btn-sim" onClick={toggleSimulateArrival}>
+                  {isSimulatedArrival ? 'GPS Real' : 'Simular Llegada'}
+                </button>
+              </div>
+            )}
             {/* Píldora flotante para que el Host supervise su plan activo en cualquier momento */}
             {activePlan && (
               <div
@@ -666,6 +812,46 @@ export default function App() {
                 </div>
               );
             })}
+          </div>
+
+          {/* Selector dinámico de Punto de Encuentro */}
+          <div className="card-dark" style={{ marginTop: '14px', marginBottom: '16px', border: '1px solid var(--card-border)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+              <label style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-white)', marginBottom: 0 }}>
+                📍 Punto de Encuentro
+              </label>
+              <span
+                style={{
+                  fontSize: '0.72rem',
+                  color: 'var(--accent-neon)',
+                  background: 'rgba(204,255,0,0.12)',
+                  padding: '2px 8px',
+                  borderRadius: '8px',
+                  fontWeight: 800,
+                }}
+              >
+                {targetCoords[0].toFixed(4)}, {targetCoords[1].toFixed(4)}
+              </span>
+            </div>
+            <p style={{ fontSize: '0.78rem', color: 'var(--text-gray)', marginBottom: '10px' }}>
+              Ubicación geográfica donde se trazará la geocerca activa de 50 metros.
+            </p>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button
+                type="button"
+                className="btn-location-action"
+                onClick={startPickingLocationOnMap}
+              >
+                🗺️ Mover en Mapa
+              </button>
+              <button
+                type="button"
+                className="btn-location-action"
+                onClick={useCurrentLocationAsTarget}
+              >
+                🎯 Mi GPS Aquí
+              </button>
+            </div>
           </div>
 
           <div className="view-footer">
