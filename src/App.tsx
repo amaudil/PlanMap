@@ -42,6 +42,9 @@ export default function App() {
     return `https://${host}/?t=${encodeURIComponent('Café y estudio en Casco Antiguo')}&v=${encodeURIComponent('☕ Chill')}`;
   });
   const [postalTitle, setPostalTitle] = useState<string>('Café y Estudio en Casco');
+  const [currentStyle, setCurrentStyle] = useState<'postal' | 'collage' | 'meme'>('postal');
+  const [uploadedPhoto, setUploadedPhoto] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Leaflet map refs
   const mapContainerRef = useRef<HTMLDivElement>(null);
@@ -238,6 +241,47 @@ export default function App() {
     window.open(`https://api.whatsapp.com/send?text=${message}`, '_blank');
   };
 
+  const finishPlanAndCapture = () => {
+    try {
+      localStorage.removeItem('planealo_active_plan');
+    } catch {
+      // safe fallback
+    }
+    setActivePlan(null);
+    switchView('view-memory');
+  };
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        if (ev.target?.result) {
+          setUploadedPhoto(ev.target.result as string);
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const setMemoryStyle = (style: 'postal' | 'collage' | 'meme') => {
+    setCurrentStyle(style);
+  };
+
+  const shareMemory = () => {
+    if (navigator.share) {
+      navigator
+        .share({
+          title: 'Recuerdo - Planealo Aquí',
+          text: `¡Mira nuestro recuerdo de "${planTitle}" en Planealo Aquí!`,
+          url: window.location.origin,
+        })
+        .catch(() => {});
+    } else {
+      alert('¡Recuerdo listo para compartir!');
+    }
+  };
+
   const handleSavePostal = async () => {
     alert('¡Postal guardada!');
     try {
@@ -327,7 +371,7 @@ export default function App() {
             <div className="top-row">
               <div className="brand-pill-dark">Planealo Aquí ⚡</div>
               <button className="icon-btn-dark" onClick={goToMemory}>
-                🖼️
+                📸
               </button>
             </div>
             {/* Píldora flotante para que el Host supervise su plan activo en cualquier momento */}
@@ -581,16 +625,27 @@ export default function App() {
                 opacity: guestJoined ? 0.7 : 1,
               }}
             >
-              {guestJoined ? '¡Conectado al Plan! 🚀' : '¡Voy en camino! 🏃♂️'}
+              {guestJoined ? '¡Conectado al Plan! 🚀' : '¡Voy en camino! 🏃‍♂️'}
             </button>
-            <button className="btn-neon" onClick={() => switchView('view-map')}>
+            <button
+              className="btn-neon"
+              onClick={finishPlanAndCapture}
+              style={{ backgroundColor: '#ff6b6b', color: '#fff', marginBottom: '8px' }}
+            >
+              🏁 Finalizar Encuentro & Recuerdo
+            </button>
+            <button
+              className="btn-neon"
+              onClick={() => switchView('view-map')}
+              style={{ background: 'var(--card-dark)', color: 'var(--text-white)', border: '1px solid var(--card-border)' }}
+            >
               Ver Mapa en Vivo
             </button>
           </div>
         </div>
 
         {/* ========================================
-             VISTA 4: RECUERDO / POSTAL
+             VISTA 4: RECUERDO / POSTAL & SELFIE COLECTIVA
              ======================================== */}
         <div id="view-memory" className={`solid-view ${currentView === 'view-memory' ? 'active' : ''}`}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
@@ -600,20 +655,79 @@ export default function App() {
             >
               ← Volver al Mapa
             </h3>
-            <span style={{ fontWeight: 800, color: 'var(--text-white)' }}>Recuerdo Colectivo</span>
+            <span style={{ fontWeight: 800, color: 'var(--accent-neon)' }}>Recuerdo Colectivo 📸</span>
           </div>
 
-          <div className="postal-card-dark">
-            <div className="postal-img-placeholder">🌅</div>
-            <h3 style={{ marginBottom: '4px', fontSize: '1.3rem' }} id="postal-title">
+          <div className="style-selector">
+            <div
+              className={`style-btn ${currentStyle === 'postal' ? 'active' : ''}`}
+              onClick={() => setMemoryStyle('postal')}
+            >
+              ✉️ Postal Pro
+            </div>
+            <div
+              className={`style-btn ${currentStyle === 'collage' ? 'active' : ''}`}
+              onClick={() => setMemoryStyle('collage')}
+            >
+              📸 Collage
+            </div>
+            <div
+              className={`style-btn ${currentStyle === 'meme' ? 'active' : ''}`}
+              onClick={() => setMemoryStyle('meme')}
+            >
+              🤪 Vibe / Meme
+            </div>
+          </div>
+
+          <div className="postal-card-dark" id="memory-card-preview">
+            <div
+              className="postal-img-container"
+              id="image-box"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              {uploadedPhoto ? (
+                <img
+                  id="uploaded-photo"
+                  src={uploadedPhoto}
+                  alt="Selfie grupal"
+                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                />
+              ) : (
+                <span id="camera-icon-placeholder" style={{ textAlign: 'center' }}>
+                  📷
+                  <br />
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-gray)' }}>
+                    Toca para tomar selfie grupal
+                  </span>
+                </span>
+              )}
+            </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              id="selfie-input"
+              accept="image/*"
+              capture="environment"
+              style={{ display: 'none' }}
+              onChange={handleImageUpload}
+            />
+
+            <h3 style={{ marginBottom: '4px', fontSize: '1.2rem' }} id="postal-title">
               {postalTitle}
             </h3>
-            <p style={{ fontSize: '0.85rem', color: 'var(--text-gray)' }}>Panamá · 6 de Noviembre, 2026</p>
+            <p style={{ fontSize: '0.8rem', color: 'var(--accent-neon)', fontWeight: 700 }} id="postal-tagline">
+              ✨ Vibe: {selectedVibeText}
+            </p>
+            <p style={{ fontSize: '0.75rem', color: 'var(--text-gray)', marginTop: '4px' }}>
+              Panamá · 6 de Noviembre, 2026
+            </p>
           </div>
 
-          <div className="card-dark">
-            <p style={{ fontSize: '0.9rem', fontStyle: 'italic', textAlign: 'center', color: 'var(--text-gray)' }}>
-              “Un espacio libre de ruido para conectar de verdad.”
+          <div className="card-dark" style={{ padding: '12px', textAlign: 'center' }}>
+            <p style={{ fontSize: '0.8rem', fontStyle: 'italic', color: 'var(--text-gray)' }} id="memory-quote">
+              {currentStyle === 'postal' && '“Un espacio libre de ruido para conectar de verdad.”'}
+              {currentStyle === 'collage' && '📸 Colección de momentos épicos en grupo.'}
+              {currentStyle === 'meme' && '🤪 Misión cumplida: Sobrevivimos al plan sin perdernos.'}
             </p>
           </div>
 
@@ -627,12 +741,12 @@ export default function App() {
                 fontWeight: 700,
                 background: 'var(--card-dark)',
               }}
-              onClick={handleSavePostal}
+              onClick={() => alert('¡Recuerdo guardado en tu galería!')}
             >
               Guardar
             </button>
-            <button className="btn-neon" style={{ flex: 1, marginTop: 0 }} onClick={handleSharePostal}>
-              Compartir
+            <button className="btn-neon" style={{ flex: 1, marginTop: 0 }} onClick={shareMemory}>
+              Compartir 🚀
             </button>
           </div>
         </div>

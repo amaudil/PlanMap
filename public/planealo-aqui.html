@@ -72,9 +72,7 @@
         }
         .view.active { display: flex; opacity: 1; transform: scale(1); z-index: 5; }
 
-        /* ========================================
-           VISTA 0: BIENVENIDA
-           ======================================== */
+        /* VISTA 0: BIENVENIDA */
         #view-welcome {
             padding: max(24px, env(safe-area-inset-top)) 20px max(24px, env(safe-area-inset-bottom)) 20px;
             justify-content: space-between;
@@ -156,9 +154,7 @@
         }
         .btn-whatsapp:active { transform: scale(0.97); }
 
-        /* ========================================
-           VISTA 1: MAPA VIVO Y CENTRO DE MANDO
-           ======================================== */
+        /* VISTA 1: MAPA VIVO Y CENTRO DE MANDO */
         #map-container {
             position: absolute;
             top: 0; left: 0; width: 100%; height: 100%;
@@ -253,9 +249,7 @@
             display: flex; align-items: center; justify-content: center; font-size: 1rem;
         }
 
-        /* ========================================
-           VISTAS INTERNAS
-           ======================================== */
+        /* VISTAS INTERNAS */
         .solid-view {
             position: absolute;
             top: 0; left: 0; width: 100%; height: 100%;
@@ -311,21 +305,36 @@
         .vibe-emoji { font-size: 2rem; margin-bottom: 6px; }
         .vibe-name { font-weight: 700; font-size: 0.9rem; color: var(--text-white); }
 
-        /* Postal Dark Pro */
+        /* Generador de Recuerdos y Estilos */
         .postal-card-dark {
             background: linear-gradient(135deg, #161A18 0%, #0A0C0B 100%);
             color: var(--text-white);
-            padding: 24px;
+            padding: 20px;
             border-radius: 28px;
             text-align: center;
-            margin-bottom: 16px;
+            margin-bottom: 14px;
             border: 1px solid var(--card-border);
             box-shadow: 0 16px 35px rgba(0,0,0,0.5);
+            position: relative;
+            overflow: hidden;
         }
-        .postal-img-placeholder {
-            width: 100%; height: 150px; background: rgba(255,255,255,0.03); border-radius: 18px; display: flex; align-items: center; justify-content: center; font-size: 3rem; margin-bottom: 14px;
+        .postal-img-container {
+            width: 100%; height: 180px; background: rgba(255,255,255,0.03); border-radius: 18px; display: flex; align-items: center; justify-content: center; font-size: 3rem; margin-bottom: 12px;
             border: 1px solid var(--card-border);
+            overflow: hidden;
+            position: relative;
         }
+        .postal-img-container img {
+            width: 100%; height: 100%; object-fit: cover; display: none;
+        }
+
+        .style-selector {
+            display: flex; gap: 8px; margin-bottom: 14px;
+        }
+        .style-btn {
+            flex: 1; padding: 10px 6px; background: var(--card-dark); border: 1px solid var(--card-border); border-radius: 14px; color: var(--text-gray); font-size: 0.8rem; font-weight: 700; cursor: pointer; text-align: center; transition: all 0.2s;
+        }
+        .style-btn.active { border-color: var(--accent-neon); color: var(--accent-neon); background: rgba(204,255,0,0.05); }
 
         .view-footer {
             margin-top: auto;
@@ -360,7 +369,7 @@
         <div class="map-overlay-top">
             <div class="top-row">
                 <div class="brand-pill-dark">Planealo Aquí ⚡</div>
-                <button class="icon-btn-dark" onclick="goToMemory()">🖼️</button>
+                <button class="icon-btn-dark" onclick="goToMemory()">📸</button>
             </div>
             <div class="active-plan-pill" id="map-plan-pill" onclick="openActivePlan()" style="display: none;">
                 <div>
@@ -457,30 +466,43 @@
 
         <div class="view-footer">
             <button class="btn-neon" onclick="joinAsGuest()" id="join-btn" style="margin-bottom: 10px; display: none;">¡Voy en camino! 🏃‍♂️</button>
-            <button class="btn-neon" onclick="switchView('view-map')">Ver Mapa en Vivo</button>
+            <button class="btn-neon" onclick="finishPlanAndCapture()" style="background-color: #ff6b6b; color: #fff; margin-bottom: 8px;">🏁 Finalizar Encuentro & Recuerdo</button>
+            <button class="btn-neon" onclick="switchView('view-map')" style="background: var(--card-dark); color: var(--text-white); border: 1px solid var(--card-border);">Ver Mapa en Vivo</button>
         </div>
     </div>
 
-    <!-- VISTA 4: RECUERDO / POSTAL -->
+    <!-- VISTA 4: RECUERDO / POSTAL & SELFIE COLECTIVA -->
     <div id="view-memory" class="solid-view">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
             <h3 style="cursor: pointer; font-size: 0.95rem; color: var(--text-gray);" onclick="switchView('view-map')">← Volver al Mapa</h3>
-            <span style="font-weight: 800; color: var(--text-white);">Recuerdo Colectivo</span>
+            <span style="font-weight: 800; color: var(--accent-neon);">Recuerdo Colectivo 📸</span>
         </div>
         
-        <div class="postal-card-dark">
-            <div class="postal-img-placeholder">🌅</div>
-            <h3 style="margin-bottom: 4px; font-size: 1.3rem;" id="postal-title">Café y Estudio en Casco</h3>
-            <p style="font-size: 0.85rem; color: var(--text-gray);">Panamá · 6 de Noviembre, 2026</p>
+        <div class="style-selector">
+            <div class="style-btn active" onclick="setMemoryStyle('postal', this)">✉️ Postal Pro</div>
+            <div class="style-btn" onclick="setMemoryStyle('collage', this)">📸 Collage</div>
+            <div class="style-btn" onclick="setMemoryStyle('meme', this)">🤪 Vibe / Meme</div>
         </div>
 
-        <div class="card-dark">
-            <p style="font-size: 0.9rem; font-style: italic; text-align: center; color: var(--text-gray);">“Un espacio libre de ruido para conectar de verdad.”</p>
+        <div class="postal-card-dark" id="memory-card-preview">
+            <div class="postal-img-container" id="image-box" onclick="document.getElementById('selfie-input').click()">
+                <span id="camera-icon-placeholder">📷<br><span style="font-size:0.75rem; color:var(--text-gray);">Toca para tomar selfie grupal</span></span>
+                <img id="uploaded-photo" alt="Selfie grupal">
+            </div>
+            <input type="file" id="selfie-input" accept="image/*" capture="environment" style="display: none;" onchange="handleImageUpload(event)">
+            
+            <h3 style="margin-bottom: 4px; font-size: 1.2rem;" id="postal-title">Café y Estudio en Casco</h3>
+            <p style="font-size: 0.8rem; color: var(--accent-neon); font-weight: 700;" id="postal-tagline">✨ Vibe: ☕ Chill</p>
+            <p style="font-size: 0.75rem; color: var(--text-gray); margin-top: 4px;">Panamá · 6 de Noviembre, 2026</p>
+        </div>
+
+        <div class="card-dark" style="padding: 12px; text-align: center;">
+            <p style="font-size: 0.8rem; font-style: italic; color: var(--text-gray);" id="memory-quote">“Un espacio libre de ruido para conectar de verdad.”</p>
         </div>
 
         <div class="view-footer" style="display: flex; gap: 10px;">
-            <button class="input-dark" style="flex: 1; text-align: center; cursor: pointer; font-weight: 700; background: var(--card-dark);" onclick="alert('¡Postal guardada!')">Guardar</button>
-            <button class="btn-neon" style="flex: 1; margin-top: 0;" onclick="alert('¡Abriendo menú para compartir!')">Compartir</button>
+            <button class="input-dark" style="flex: 1; text-align: center; cursor: pointer; font-weight: 700; background: var(--card-dark);" onclick="alert('¡Recuerdo guardado en tu galería!')">Guardar</button>
+            <button class="btn-neon" style="flex: 1; margin-top: 0;" onclick="shareMemory()">Compartir 🚀</button>
         </div>
     </div>
 </div>
@@ -491,6 +513,7 @@
     let fullInviteUrl = '';
     let currentPlanData = { title: 'Café y estudio en Casco Antiguo', vibe: '☕ Chill' };
     let participantCount = 3;
+    let currentStyle = 'postal';
 
     window.addEventListener('DOMContentLoaded', () => {
         map = L.map('map-container', { zoomControl: false }).setView([8.9824, -79.5199], 15);
@@ -579,6 +602,7 @@
     function updateInviteScreen() {
         document.getElementById('invite-subtitle').innerText = `Vibe: ${currentPlanData.vibe} · ${currentPlanData.title}`;
         document.getElementById('postal-title').innerText = currentPlanData.title;
+        document.getElementById('postal-tagline').innerText = `✨ Vibe: ${currentPlanData.vibe}`;
         document.getElementById('participants-title').innerText = `Amigos en camino (${participantCount})`;
     }
 
@@ -611,6 +635,14 @@
         document.getElementById('map-pill-count').innerText = `${participantCount} en camino →`;
     }
 
+    function finishPlanAndCapture() {
+        // Limpiar plan activo del localStorage y llevar directo al generador de recuerdos
+        localStorage.removeItem('planealo_active_plan');
+        showMapPlanPill(false);
+        updateInviteScreen();
+        switchView('view-memory');
+    }
+
     function copyInviteLink() {
         navigator.clipboard.writeText(fullInviteUrl).then(() => {
             alert('¡Enlace copiado al portapapeles!');
@@ -625,7 +657,49 @@
     }
 
     function goToMemory() {
+        updateInviteScreen();
         switchView('view-memory');
+    }
+
+    function handleImageUpload(event) {
+        const file = event.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const img = document.getElementById('uploaded-photo');
+                img.src = e.target.result;
+                img.style.display = 'block';
+                document.getElementById('camera-icon-placeholder').style.display = 'none';
+            }
+            reader.readAsDataURL(file);
+        }
+    }
+
+    function setMemoryStyle(style, element) {
+        currentStyle = style;
+        document.querySelectorAll('.style-btn').forEach(btn => btn.classList.remove('active'));
+        element.classList.add('active');
+
+        const quoteBox = document.getElementById('memory-quote');
+        if (style === 'postal') {
+            quoteBox.innerText = '“Un espacio libre de ruido para conectar de verdad.”';
+        } else if (style === 'collage') {
+            quoteBox.innerText = '📸 Colección de momentos épicos en grupo.';
+        } else if (style === 'meme') {
+            quoteBox.innerText = '🤪 Misión cumplida: Sobrevivimos al plan sin perdernos.';
+        }
+    }
+
+    function shareMemory() {
+        if (navigator.share) {
+            navigator.share({
+                title: 'Recuerdo - Planealo Aquí',
+                text: `¡Mira nuestro recuerdo de "${currentPlanData.title}" en Planealo Aquí!`,
+                url: window.location.origin
+            }).catch(() => {});
+        } else {
+            alert('¡Recuerdo listo para compartir!');
+        }
     }
 </script>
 
