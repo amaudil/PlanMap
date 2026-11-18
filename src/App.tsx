@@ -22,6 +22,12 @@ import {
   GEOFENCE_RADIUS_METERS,
   DEFAULT_MEETING_POINT,
 } from './utils/geofencing';
+import {
+  getRecentPlaces,
+  PlaceSearchResult,
+  saveRecentPlace,
+  searchPlaces,
+} from './utils/geocoding';
 
 interface PlanData {
   title: string;
@@ -171,6 +177,12 @@ export default function App() {
   });
 
   const [isSelectingLocationMode, setIsSelectingLocationMode] = useState<boolean>(false);
+  const [isMapPanning, setIsMapPanning] = useState<boolean>(false);
+  const [placeQuery, setPlaceQuery] = useState<string>('');
+  const [placeResults, setPlaceResults] = useState<PlaceSearchResult[]>([]);
+  const [searchingPlaces, setSearchingPlaces] = useState<boolean>(false);
+  const [selectedPlaceLabel, setSelectedPlaceLabel] = useState<string | null>(null);
+  const [recentPlaces, setRecentPlaces] = useState<PlaceSearchResult[]>(() => getRecentPlaces());
   const [userCoords, setUserCoords] = useState<[number, number]>([8.9839, -79.5212]);
   const [isSimulatedArrival, setIsSimulatedArrival] = useState<boolean>(false);
   const [hasCelebratedArrival, setHasCelebratedArrival] = useState<boolean>(false);
@@ -194,10 +206,12 @@ export default function App() {
   const otherMarkersRef = useRef<Record<string, L.Marker>>({});
   const watchIdRef = useRef<number | null>(null);
 
-  // Telemetry & toast refs
+  // Telemetry, picker & toast refs
   const lastTelemetrySyncAtRef = useRef<number>(0);
   const lastTelemetryInsideRef = useRef<boolean | null>(null);
   const hasPannedForPlanRef = useRef<string | null>(null);
+  const savedTargetBeforePickRef = useRef<[number, number] | null>(null);
+  const isProgrammaticFlyRef = useRef<boolean>(false);
   const toastTimerRef = useRef<number | null>(null);
 
   const showToast = (msg: string) => {
@@ -640,11 +654,15 @@ export default function App() {
       targetMarkerRef.current.on('dragend', (e) => {
         const marker = e.target as L.Marker;
         const pos = marker.getLatLng();
+        setSelectedPlaceLabel(null);
         setTargetCoords([pos.lat, pos.lng]);
       });
     } else {
       targetMarkerRef.current.setLatLng(targetCoords);
     }
+
+    // Ocultar el pin clásico mientras está activa la mira fija central
+    targetMarkerRef.current.setOpacity(isSelectingLocationMode ? 0 : 1);
 
     // 3. Marcador Neón del Usuario con ping
     if (!userMarkerRef.current) {
@@ -693,7 +711,14 @@ export default function App() {
       map.removeLayer(polylineRef.current);
       polylineRef.current = null;
     }
-  }, [userCoords, targetCoords, isInsideGeofence, distanceETA.distanceLabel, distanceETA.etaLabel]);
+  }, [
+    userCoords,
+    targetCoords,
+    isInsideGeofence,
+    isSelectingLocationMode,
+    distanceETA.distanceLabel,
+    distanceETA.etaLabel,
+  ]);
 
   // 5. Marcadores en vivo de otros participantes en la sala
   useEffect(() => {
@@ -775,22 +800,125 @@ export default function App() {
     });
   }, [liveParticipants, authUser, livePlanId]);
 
-  // Manejador de toques en el mapa en modo de selección de ubicación
+  // Motor de Mira Fija Central (estilo Uber/InDrive) y toque para centrar
   useEffect(() => {
-    if (!mapInstanceRef.current) return;
+    if (!mapInstanceRef.current || !isSelectingLocationMode) return;
     const map = mapInstanceRef.current;
 
-    const handleMapClick = (e: L.LeafletMouseEvent) => {
-      if (isSelectingLocationMode) {
-        setTargetCoords([e.latlng.lat, e.latlng.lng]);
+    const handleMoveStart = () => {
+      setIsMapPanning(true);
+    };
+
+    const handleMove = () => {
+      const center = map.getCenter();
+      if (geofenceCircleRef.current) {
+        geofenceCircleRef.current.setLatLng(center);
       }
     };
 
+    const handleMoveEnd = () => {
+      setIsMapPanning(false);
+      const center = map.getCenter();
+      if (isProgrammaticFlyRef.current) {
+        isProgrammaticFlyRef.current = false;
+      } else {
+        setSelectedPlaceLabel(null);
+      }
+      setTargetCoords([center.lat, center.lng]);
+    };
+
+    const handleMapClick = (e: L.LeafletMouseEvent) => {
+      setSelectedPlaceLabel(null);
+      map.panTo(e.latlng, { animate: true });
+    };
+
+    map.on('movestart', handleMoveStart);
+    map.on('move', handleMove);
+    map.on('moveend', handleMoveEnd);
     map.on('click', handleMapClick);
+
     return () => {
+      map.off('movestart', handleMoveStart);
+      map.off('move', handleMove);
+      map.off('moveend', handleMoveEnd);
       map.off('click', handleMapClick);
     };
   }, [isSelectingLocationMode]);
+
+  // Buscador de lugares con debounce (350ms)
+  useEffect(() => {
+    if (!isSelectingLocationMode) return;
+    const trimmed = placeQuery.trim();
+    if (trimmed.length < 2) {
+      setPlaceResults([]);
+      setSearchingPlaces(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    setSearchingPlaces(true);
+    const timer = window.setTimeout(async () => {
+      const results = await searchPlaces(trimmed, userCoords, controller.signal);
+      if (!controller.signal.aborted) {
+        setPlaceResults(results);
+        setSearchingPlaces(false);
+      }
+    }, 350);
+
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [placeQuery, isSelectingLocationMode, userCoords]);
+
+  const selectSearchResult = (place: PlaceSearchResult) => {
+    isProgrammaticFlyRef.current = true;
+    setSelectedPlaceLabel(place.name);
+    setTargetCoords([place.lat, place.lng]);
+    setPlaceResults([]);
+    setPlaceQuery('');
+    const updatedRecents = saveRecentPlace(place);
+    setRecentPlaces(updatedRecents);
+
+    if (mapInstanceRef.current) {
+      mapInstanceRef.current.flyTo([place.lat, place.lng], 16, { duration: 0.85 });
+    }
+    showToast(`📍 ${place.name}`);
+  };
+
+  const handleZoomIn = () => {
+    mapInstanceRef.current?.zoomIn();
+  };
+
+  const handleZoomOut = () => {
+    mapInstanceRef.current?.zoomOut();
+  };
+
+  const handleCenterMapOnMyGps = () => {
+    const flyToCoords = (coords: [number, number]) => {
+      if (isSelectingLocationMode) {
+        isProgrammaticFlyRef.current = true;
+        setSelectedPlaceLabel('Mi ubicación GPS');
+        setTargetCoords(coords);
+      }
+      mapInstanceRef.current?.flyTo(coords, 16, { duration: 0.7 });
+      showToast('Centrado en tu ubicación 🎯');
+    };
+
+    if (typeof navigator !== 'undefined' && 'geolocation' in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const fresh: [number, number] = [pos.coords.latitude, pos.coords.longitude];
+          setUserCoords(fresh);
+          flyToCoords(fresh);
+        },
+        () => flyToCoords(userCoords),
+        { enableHighAccuracy: true, timeout: 6000 }
+      );
+    } else {
+      flyToCoords(userCoords);
+    }
+  };
 
   const switchView = (viewId: string) => {
     setCurrentView(viewId);
@@ -827,23 +955,54 @@ export default function App() {
   };
 
   const startPickingLocationOnMap = () => {
+    savedTargetBeforePickRef.current = [targetCoords[0], targetCoords[1]];
+    setPlaceQuery('');
+    setPlaceResults([]);
+    setRecentPlaces(getRecentPlaces());
     setIsSelectingLocationMode(true);
     switchView('view-map');
     if (mapInstanceRef.current) {
       setTimeout(() => {
         mapInstanceRef.current?.invalidateSize();
-        mapInstanceRef.current?.panTo(targetCoords, { animate: true });
-      }, 200);
+        const currentZoom = mapInstanceRef.current?.getZoom() ?? 15;
+        mapInstanceRef.current?.setView(targetCoords, Math.min(currentZoom, 15), {
+          animate: true,
+        });
+      }, 220);
     }
   };
 
   const confirmLocationSelection = () => {
+    let finalCoords = targetCoords;
+    if (mapInstanceRef.current) {
+      const center = mapInstanceRef.current.getCenter();
+      finalCoords = [center.lat, center.lng];
+      setTargetCoords(finalCoords);
+    }
+    const placeToSave: PlaceSearchResult = {
+      id: `picked_${finalCoords[0].toFixed(4)}_${finalCoords[1].toFixed(4)}`,
+      name:
+        selectedPlaceLabel ||
+        `Punto (${finalCoords[0].toFixed(3)}, ${finalCoords[1].toFixed(3)})`,
+      subtitle: `${finalCoords[0].toFixed(4)}, ${finalCoords[1].toFixed(4)}`,
+      lat: finalCoords[0],
+      lng: finalCoords[1],
+    };
+    setRecentPlaces(saveRecentPlace(placeToSave));
     setIsSelectingLocationMode(false);
+    setPlaceQuery('');
+    setPlaceResults([]);
     switchView('view-create');
   };
 
   const cancelLocationSelection = () => {
+    if (savedTargetBeforePickRef.current) {
+      setTargetCoords(savedTargetBeforePickRef.current);
+      mapInstanceRef.current?.setView(savedTargetBeforePickRef.current, 16, { animate: false });
+    }
     setIsSelectingLocationMode(false);
+    setPlaceQuery('');
+    setPlaceResults([]);
     switchView('view-create');
   };
 
@@ -1265,6 +1424,50 @@ export default function App() {
         <div id="view-map" className={`view ${currentView === 'view-map' ? 'active' : ''}`}>
           <div id="map-container" ref={mapContainerRef}></div>
 
+          {/* Mira Fija Central estilo Uber/InDrive al mover en mapa */}
+          {isSelectingLocationMode && (
+            <div className={`map-center-crosshair ${isMapPanning ? 'panning' : ''}`}>
+              <div className="crosshair-pin">
+                <div className="crosshair-pin-inner" />
+              </div>
+              <div className="crosshair-shadow" />
+            </div>
+          )}
+
+          {/* Controles táctiles rápidos de Zoom y GPS */}
+          <div
+            className="map-controls-stack"
+            style={{ bottom: isSelectingLocationMode ? '32px' : '108px' }}
+          >
+            <button
+              type="button"
+              className="map-ctrl-btn"
+              onClick={handleZoomIn}
+              title="Acercar"
+              aria-label="Acercar mapa"
+            >
+              +
+            </button>
+            <button
+              type="button"
+              className="map-ctrl-btn"
+              onClick={handleZoomOut}
+              title="Alejar"
+              aria-label="Alejar mapa"
+            >
+              −
+            </button>
+            <button
+              type="button"
+              className="map-ctrl-btn"
+              onClick={handleCenterMapOnMyGps}
+              title="Centrar en mi GPS"
+              aria-label="Centrar en mi GPS"
+            >
+              🎯
+            </button>
+          </div>
+
           <div className="map-overlay-top">
             <div className="top-row">
               <div className="brand-pill-dark">Planealo Aquí ⚡</div>
@@ -1298,13 +1501,13 @@ export default function App() {
               </div>
             </div>
 
-            {/* Banner interactivo de selección de punto en mapa */}
+            {/* Banner interactivo de búsqueda y mira central */}
             {isSelectingLocationMode ? (
               <div className="selector-banner">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span
                     style={{
-                      fontSize: '0.75rem',
+                      fontSize: '0.74rem',
                       color: 'var(--accent-neon)',
                       fontWeight: 800,
                       display: 'flex',
@@ -1316,9 +1519,10 @@ export default function App() {
                       className="radar-pulse-dot"
                       style={{ backgroundColor: '#CCFF00', boxShadow: '0 0 8px #CCFF00' }}
                     ></span>
-                    SELECCIONA EL ENCUENTRO
+                    BUSCA O DESLIZA EL MAPA
                   </span>
                   <button
+                    type="button"
                     onClick={cancelLocationSelection}
                     style={{
                       background: 'none',
@@ -1332,32 +1536,119 @@ export default function App() {
                     ✕ Cancelar
                   </button>
                 </div>
-                <p style={{ fontSize: '0.78rem', color: 'var(--text-white)', margin: 0 }}>
-                  Toca cualquier lugar del mapa para reubicar el pin o arrástralo directamente.
-                </p>
+
+                {/* Buscador instantáneo de lugares, direcciones o enlaces de Maps */}
+                <div className="place-search-box">
+                  <span style={{ fontSize: '0.9rem' }}>🔍</span>
+                  <input
+                    type="text"
+                    className="place-search-input"
+                    placeholder="Buscar lugar, barrio o pegar coords/Maps..."
+                    value={placeQuery}
+                    onChange={(e) => setPlaceQuery(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && placeResults.length > 0) {
+                        e.preventDefault();
+                        selectSearchResult(placeResults[0]);
+                      }
+                    }}
+                  />
+                  {placeQuery && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPlaceQuery('');
+                        setPlaceResults([]);
+                      }}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: 'var(--text-gray)',
+                        fontSize: '0.85rem',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+
+                {searchingPlaces && (
+                  <span style={{ fontSize: '0.72rem', color: 'var(--text-gray)' }}>
+                    Buscando ubicaciones...
+                  </span>
+                )}
+
+                {!searchingPlaces && placeResults.length > 0 && (
+                  <div className="place-results-list">
+                    {placeResults.map((place) => (
+                      <button
+                        key={place.id}
+                        type="button"
+                        className="place-result-item"
+                        onClick={() => selectSearchResult(place)}
+                      >
+                        <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-white)' }}>
+                          📍 {place.name}
+                        </span>
+                        <span style={{ fontSize: '0.7rem', color: 'var(--text-gray)' }}>
+                          {place.subtitle}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {!searchingPlaces && placeQuery.trim().length >= 2 && placeResults.length === 0 && (
+                  <span style={{ fontSize: '0.72rem', color: 'var(--text-gray)' }}>
+                    Sin coincidencias exactas. Usa − para alejar o pega coordenadas.
+                  </span>
+                )}
+
+                {/* Atajos rápidos de lugares recientes */}
+                {placeQuery.trim().length === 0 && recentPlaces.length > 0 && (
+                  <div className="recent-places-row">
+                    {recentPlaces.map((rp) => (
+                      <button
+                        key={rp.id}
+                        type="button"
+                        className="recent-place-btn"
+                        onClick={() => selectSearchResult(rp)}
+                        title={rp.name}
+                      >
+                        🕒 {rp.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                   <span
                     style={{
                       fontSize: '0.72rem',
-                      color: 'var(--text-gray)',
+                      color: selectedPlaceLabel ? 'var(--text-white)' : 'var(--text-gray)',
                       background: 'rgba(255,255,255,0.06)',
-                      padding: '5px 8px',
+                      padding: '6px 9px',
                       borderRadius: '8px',
                       flex: 1,
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
                       whiteSpace: 'nowrap',
+                      fontWeight: selectedPlaceLabel ? 700 : 500,
                     }}
                   >
-                    📍 {targetCoords[0].toFixed(4)}, {targetCoords[1].toFixed(4)}
+                    📍{' '}
+                    {selectedPlaceLabel ||
+                      `${targetCoords[0].toFixed(4)}, ${targetCoords[1].toFixed(4)}`}
                   </span>
                   <button
+                    type="button"
                     className="radar-btn-sim"
                     style={{
                       background: 'var(--accent-neon)',
                       color: '#0A0C0B',
                       border: 'none',
-                      padding: '5px 12px',
+                      padding: '6px 12px',
                       fontWeight: 800,
                     }}
                     onClick={confirmLocationSelection}
@@ -1401,7 +1692,7 @@ export default function App() {
             )}
 
             {/* Píldora flotante para supervisar la sala en vivo */}
-            {(activePlan || livePlan) && livePlan?.status !== 'finished' && (
+            {!isSelectingLocationMode && (activePlan || livePlan) && livePlan?.status !== 'finished' && (
               <div className="active-plan-pill" id="map-plan-pill" onClick={openActivePlan}>
                 <div>
                   <span
@@ -1441,12 +1732,14 @@ export default function App() {
             )}
           </div>
 
-          <div className="map-overlay-bottom">
-            <div className="action-pill-neon" onClick={goToCreatePlan}>
-              <span>¿Cuál es el plan hoy?</span>
-              <div className="action-arrow-dark">→</div>
+          {!isSelectingLocationMode && (
+            <div className="map-overlay-bottom">
+              <div className="action-pill-neon" onClick={goToCreatePlan}>
+                <span>¿Cuál es el plan hoy?</span>
+                <div className="action-arrow-dark">→</div>
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         {/* ========================================
@@ -1606,9 +1899,13 @@ export default function App() {
                   padding: '2px 8px',
                   borderRadius: '8px',
                   fontWeight: 800,
+                  maxWidth: '55%',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
                 }}
               >
-                {targetCoords[0].toFixed(4)}, {targetCoords[1].toFixed(4)}
+                {selectedPlaceLabel || `${targetCoords[0].toFixed(4)}, ${targetCoords[1].toFixed(4)}`}
               </span>
             </div>
             <p style={{ fontSize: '0.78rem', color: 'var(--text-gray)', marginBottom: '10px' }}>

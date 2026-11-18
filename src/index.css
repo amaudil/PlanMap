@@ -718,3 +718,187 @@ p.subtitle {
   pointer-events: none;
 }
 
+/* ========================================
+   MIRA CENTRAL, BUSCADOR Y CONTROLES DE MAPA
+   ======================================== */
+.map-center-crosshair {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 9;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.crosshair-pin {
+  width: 42px;
+  height: 42px;
+  border-radius: 50% 50% 50% 0;
+  transform: rotate(-45deg);
+  background: var(--accent-neon);
+  border: 3px solid #0A0C0B;
+  box-shadow: 0 8px 20px rgba(204, 255, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: -38px;
+  transition: transform 0.16s ease, box-shadow 0.16s ease;
+}
+
+.crosshair-pin-inner {
+  transform: rotate(45deg);
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #0A0C0B;
+}
+
+.map-center-crosshair.panning .crosshair-pin {
+  transform: rotate(-45deg) translate(6px, -6px) scale(1.08);
+  box-shadow: 0 14px 26px rgba(204, 255, 0, 0.65);
+}
+
+.crosshair-shadow {
+  width: 14px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(204, 255, 0, 0.45);
+  box-shadow: 0 0 10px rgba(204, 255, 0, 0.7);
+  margin-top: 4px;
+  transition: transform 0.16s ease, opacity 0.16s ease;
+}
+
+.map-center-crosshair.panning .crosshair-shadow {
+  transform: scale(0.7);
+  opacity: 0.55;
+}
+
+.map-controls-stack {
+  position: absolute;
+  right: 16px;
+  bottom: 108px;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.map-ctrl-btn {
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  background: rgba(22, 26, 24, 0.92);
+  backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: var(--text-white);
+  font-size: 1.15rem;
+  font-weight: 800;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.5);
+  transition: all 0.15s ease;
+}
+
+.map-ctrl-btn:hover,
+.map-ctrl-btn:active {
+  border-color: var(--accent-neon);
+  color: var(--accent-neon);
+  transform: scale(0.96);
+}
+
+.place-search-box {
+  position: relative;
+  display: flex;
+  align-items: center;
+  background: rgba(10, 12, 11, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 12px;
+  padding: 0 10px;
+  gap: 6px;
+}
+
+.place-search-box:focus-within {
+  border-color: var(--accent-neon);
+}
+
+.place-search-input {
+  width: 100%;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text-white);
+  font-size: 0.84rem;
+  padding: 9px 0;
+}
+
+.place-search-input::placeholder {
+  color: var(--text-gray);
+}
+
+.place-results-list {
+  display: flex;
+  flex-direction: column;
+  max-height: 185px;
+  overflow-y: auto;
+  background: #0E1110;
+  border: 1px solid rgba(204, 255, 0, 0.28);
+  border-radius: 12px;
+  margin-top: 2px;
+}
+
+.place-result-item {
+  width: 100%;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 9px 11px;
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  transition: background 0.12s ease;
+}
+
+.place-result-item:last-child {
+  border-bottom: none;
+}
+
+.place-result-item:hover {
+  background: rgba(204, 255, 0, 0.1);
+}
+
+.recent-places-row {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.recent-place-btn {
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: var(--text-white);
+  border-radius: 10px;
+  padding: 5px 9px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.recent-place-btn:hover {
+  border-color: var(--accent-neon);
+  color: var(--accent-neon);
+}
+
+
