@@ -1,0 +1,176 @@
+{
+  "entities": {
+    "Plan": {
+      "title": "Plan",
+      "description": "Sala viva de coordinación de un encuentro en tiempo real con punto geográfico y geocerca de 50m.",
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "Título del plan o actividad",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "vibe": {
+          "type": "string",
+          "description": "Vibra seleccionada con emoji",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "targetLat": {
+          "type": "number",
+          "description": "Latitud del punto de encuentro"
+        },
+        "targetLng": {
+          "type": "number",
+          "description": "Longitud del punto de encuentro"
+        },
+        "hostId": {
+          "type": "string",
+          "description": "UID del anfitrión creador del plan",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "hostName": {
+          "type": "string",
+          "description": "Nombre público o alias del anfitrión",
+          "minLength": 1,
+          "maxLength": 50
+        },
+        "status": {
+          "type": "string",
+          "description": "Estado de ciclo de vida del plan",
+          "enum": ["active", "finished"]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp de creación validado por servidor"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp de última actualización validado por servidor"
+        }
+      },
+      "required": [
+        "title",
+        "vibe",
+        "targetLat",
+        "targetLng",
+        "hostId",
+        "hostName",
+        "status",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "Participant": {
+      "title": "Participant",
+      "description": "Estado y telemetría pública en vivo de un participante dentro de una sala (sin PII).",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "UID autenticado del participante",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "planId": {
+          "type": "string",
+          "description": "ID del plan padre al que pertenece el participante",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "name": {
+          "type": "string",
+          "description": "Nombre o alias público elegido para el encuentro",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "avatar": {
+          "type": "string",
+          "description": "Emoji representativo del participante",
+          "minLength": 1,
+          "maxLength": 12
+        },
+        "role": {
+          "type": "string",
+          "description": "Rol del participante en la sala",
+          "enum": ["host", "guest"]
+        },
+        "status": {
+          "type": "string",
+          "description": "Estado de proximidad respecto a la geocerca de 50m",
+          "enum": ["on_the_way", "arrived"]
+        },
+        "quickPulse": {
+          "type": "string",
+          "description": "Estado táctico rápido opcional (ej. Ya salí, Voy 5 min tarde)",
+          "minLength": 0,
+          "maxLength": 60
+        },
+        "lat": {
+          "type": "number",
+          "description": "Última latitud reportada del participante"
+        },
+        "lng": {
+          "type": "number",
+          "description": "Última longitud reportada del participante"
+        },
+        "distanceMeters": {
+          "type": "number",
+          "description": "Distancia calculada en metros al punto de encuentro"
+        },
+        "etaLabel": {
+          "type": "string",
+          "description": "Etiqueta legible del tiempo estimado caminando",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "joinedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp de ingreso validado por servidor"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp de última telemetría validado por servidor"
+        }
+      },
+      "required": [
+        "uid",
+        "planId",
+        "name",
+        "avatar",
+        "role",
+        "status",
+        "quickPulse",
+        "lat",
+        "lng",
+        "distanceMeters",
+        "etaLabel",
+        "joinedAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/plans/{planId}": {
+      "schema": {
+        "$ref": "#/entities/Plan"
+      },
+      "description": "Salas activas y finalizadas creadas por anfitriones verificados."
+    },
+    "/plans/{planId}/participants/{participantId}": {
+      "schema": {
+        "$ref": "#/entities/Participant"
+      },
+      "description": "Participantes en vivo y su telemetría Haversine dentro de la sala."
+    }
+  }
+}

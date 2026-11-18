@@ -1,0 +1,201 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net (Default Deny)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // =========================================================
+    // GLOBAL HARDENED PRIMITIVES
+    // =========================================================
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidLat(lat) {
+      return lat is number && lat >= -90 && lat <= 90;
+    }
+
+    function isValidLng(lng) {
+      return lng is number && lng >= -180 && lng <= 180;
+    }
+
+    // =========================================================
+    // VALIDATION BLUEPRINTS (ANTI-UPDATE-GAP)
+    // =========================================================
+    function isValidPlan(data) {
+      return data.keys().hasAll([
+          'title', 'vibe', 'targetLat', 'targetLng',
+          'hostId', 'hostName', 'status', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'title', 'vibe', 'targetLat', 'targetLng',
+          'hostId', 'hostName', 'status', 'createdAt', 'updatedAt'
+        ])
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 100
+        && data.vibe is string && data.vibe.size() >= 1 && data.vibe.size() <= 40
+        && isValidLat(data.targetLat)
+        && isValidLng(data.targetLng)
+        && isValidId(data.hostId)
+        && data.hostName is string && data.hostName.size() >= 1 && data.hostName.size() <= 50
+        && data.status is string && data.status in ['active', 'finished']
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidParticipant(data, planId, participantId) {
+      return data.keys().hasAll([
+          'uid', 'planId', 'name', 'avatar', 'role', 'status',
+          'quickPulse', 'lat', 'lng', 'distanceMeters', 'etaLabel',
+          'joinedAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'uid', 'planId', 'name', 'avatar', 'role', 'status',
+          'quickPulse', 'lat', 'lng', 'distanceMeters', 'etaLabel',
+          'joinedAt', 'updatedAt'
+        ])
+        && isValidId(data.uid) && data.uid == participantId
+        && isValidId(data.planId) && data.planId == planId
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 40
+        && data.avatar is string && data.avatar.size() >= 1 && data.avatar.size() <= 12
+        && data.role is string && data.role in ['host', 'guest']
+        && data.status is string && data.status in ['on_the_way', 'arrived']
+        && data.quickPulse is string && data.quickPulse.size() <= 60
+        && isValidLat(data.lat)
+        && isValidLng(data.lng)
+        && data.distanceMeters is number && data.distanceMeters >= 0 && data.distanceMeters <= 20000000
+        && data.etaLabel is string && data.etaLabel.size() >= 1 && data.etaLabel.size() <= 40
+        && data.joinedAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    // =========================================================
+    // COLLECTION: /plans/{planId}
+    // =========================================================
+    match /plans/{planId} {
+      // Cualquier usuario verificado con el enlace exacto puede leer la sala
+      allow get: if isVerifiedUser() && isValidId(planId);
+
+      // Solo el anfitrión puede listar sus propias salas (Query Enforcer)
+      allow list: if isVerifiedUser() && resource.data.hostId == request.auth.uid;
+
+      // Creación de sala: el creador debe ser el hostId y usar timestamps del servidor
+      allow create: if isVerifiedUser()
+        && isValidId(planId)
+        && isValidPlan(incoming())
+        && incoming().hostId == request.auth.uid
+        && incoming().status == 'active'
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+
+      // Actualización basada en acciones y bloqueo de estado terminal ('finished')
+      allow update: if isVerifiedUser()
+        && isValidId(planId)
+        && isValidPlan(incoming())
+        && existing().hostId == request.auth.uid
+        && existing().status == 'active'
+        && incoming().hostId == existing().hostId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          // Acción 1: Ajustar punto de encuentro o título/vibe
+          (incoming().diff(existing()).affectedKeys().hasOnly(['title', 'vibe', 'targetLat', 'targetLng', 'updatedAt']))
+          ||
+          // Acción 2: Finalizar el encuentro (estado terminal irreversible)
+          (incoming().status == 'finished' && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']))
+        );
+
+      allow delete: if false;
+
+      // =========================================================
+      // SUBCOLLECTION: /plans/{planId}/participants/{participantId}
+      // =========================================================
+      match /participants/{participantId} {
+        function parentPlanExistsAfter() {
+          return existsAfter(/databases/$(database)/documents/plans/$(planId))
+            && getAfter(/databases/$(database)/documents/plans/$(planId)).data.status == 'active';
+        }
+
+        function parentPlanIsActive() {
+          return exists(/databases/$(database)/documents/plans/$(planId))
+            && get(/databases/$(database)/documents/plans/$(planId)).data.status == 'active';
+        }
+
+        function isHostOfParentAfter() {
+          return getAfter(/databases/$(database)/documents/plans/$(planId)).data.hostId == request.auth.uid;
+        }
+
+        allow get: if isVerifiedUser()
+          && isValidId(planId)
+          && isValidId(participantId)
+          && exists(/databases/$(database)/documents/plans/$(planId));
+
+        // Listado restringido a documentos pertenecientes explícitamente a este planId (sin get/exists en list)
+        allow list: if isVerifiedUser() && resource.data.planId == planId;
+
+        // Unirse a la sala (incluye creación atómica en batch con el plan padre)
+        allow create: if isVerifiedUser()
+          && isValidId(planId)
+          && isValidId(participantId)
+          && participantId == request.auth.uid
+          && isValidParticipant(incoming(), planId, participantId)
+          && incoming().joinedAt == request.time
+          && incoming().updatedAt == request.time
+          && parentPlanExistsAfter()
+          && (
+            (incoming().role == 'host' && isHostOfParentAfter())
+            ||
+            (incoming().role == 'guest')
+          );
+
+        // Actualización basada en acciones (telemetría GPS o pulso rápido/perfil)
+        allow update: if isVerifiedUser()
+          && isValidId(planId)
+          && isValidId(participantId)
+          && participantId == request.auth.uid
+          && isValidParticipant(incoming(), planId, participantId)
+          && parentPlanIsActive()
+          && incoming().uid == existing().uid
+          && incoming().planId == existing().planId
+          && incoming().role == existing().role
+          && incoming().joinedAt == existing().joinedAt
+          && incoming().updatedAt == request.time
+          && (
+            // Acción 1: Actualización de telemetría GPS y estado de geocerca
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'status', 'lat', 'lng', 'distanceMeters', 'etaLabel', 'updatedAt'
+            ])
+            ||
+            // Acción 2: Actualización de alias, avatar o pulso rápido táctico
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'name', 'avatar', 'quickPulse', 'updatedAt'
+            ])
+          );
+
+        allow delete: if isVerifiedUser()
+          && isValidId(planId)
+          && isValidId(participantId)
+          && participantId == request.auth.uid;
+      }
+    }
+  }
+}

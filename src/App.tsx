@@ -1,6 +1,20 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import L from 'leaflet';
 import confetti from 'canvas-confetti';
+import { onAuthStateChanged, User } from 'firebase/auth';
+import { auth, signInWithGoogle, signOutUser } from './firebase';
+import {
+  createLivePlanRoom,
+  finishLivePlan,
+  generateSafePlanId,
+  joinOrUpdateGuestInRoom,
+  LiveParticipantDoc,
+  LivePlanDoc,
+  sendQuickPulse,
+  subscribeToParticipants,
+  subscribeToPlan,
+  syncMyTelemetry,
+} from './services/liveRooms';
 import { downloadPostcardAsImage, sharePostcardAsFile } from './utils/postcardCanvas';
 import {
   calculateHaversineDistanceMeters,
@@ -23,16 +37,84 @@ const VIBE_OPTIONS = [
   { name: 'Nocturno', emoji: '🌙' },
 ];
 
+const AVATAR_OPTIONS = ['⚡', '🚀', '🔥', '☕', '👟', '🏃', '😎', '🎯'];
+
+const PULSE_OPTIONS = [
+  'Ya salí 👟',
+  '5 min tarde ⏱️',
+  'Ya pedí mesa ☕',
+  '¡Llegué! 🎯',
+];
+
+function escapeHtml(value: string): string {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function getStoredString(key: string, fallback: string): string {
+  if (typeof window === 'undefined') return fallback;
+  try {
+    return localStorage.getItem(key) || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 export default function App() {
-  // GESTIÓN INTELIGENTE DE RUTAS POR URL
+  // ========================================
+  // AUTENTICACIÓN & IDENTIDAD DEL USUARIO
+  // ========================================
+  const [authUser, setAuthUser] = useState<User | null>(null);
+  const [authReady, setAuthReady] = useState<boolean>(false);
+  const [authBusy, setAuthBusy] = useState<boolean>(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+
+  const [userAlias, setUserAlias] = useState<string>(() =>
+    getStoredString('planealo_user_alias', '')
+  );
+  const [userAvatar, setUserAvatar] = useState<string>(() =>
+    getStoredString('planealo_user_avatar', '⚡')
+  );
+
+  // ========================================
+  // SALAS EN TIEMPO REAL (FIRESTORE)
+  // ========================================
+  const [livePlanId, setLivePlanId] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const urlParams = new URLSearchParams(window.location.search);
+    const idParam = urlParams.get('id');
+    if (idParam) return idParam;
+    try {
+      return localStorage.getItem('planealo_active_plan_id');
+    } catch {
+      return null;
+    }
+  });
+  const [livePlan, setLivePlan] = useState<LivePlanDoc | null>(null);
+  const [liveParticipants, setLiveParticipants] = useState<LiveParticipantDoc[]>([]);
+  const [creatingPlan, setCreatingPlan] = useState<boolean>(false);
+  const [joiningRoom, setJoiningRoom] = useState<boolean>(false);
+  const [sendingPulse, setSendingPulse] = useState<boolean>(false);
+  const [finishingPlan, setFinishingPlan] = useState<boolean>(false);
+  const [roomError, setRoomError] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // ========================================
+  // GESTIÓN DE VISTAS Y FORMULARIO
+  // ========================================
   const [currentView, setCurrentView] = useState<string>('view-welcome');
   const [isGuestMode, setIsGuestMode] = useState<boolean>(false);
   const [guestJoined, setGuestJoined] = useState<boolean>(false);
 
-  // Form & Plan state
   const [planTitle, setPlanTitle] = useState<string>('Café y estudio en Casco Antiguo');
   const [selectedVibeText, setSelectedVibeText] = useState<string>('☕ Chill');
-  const [inviteSubtitle, setInviteSubtitle] = useState<string>('Vibe: ☕ Chill · Café y estudio en Casco Antiguo');
+  const [inviteSubtitle, setInviteSubtitle] = useState<string>(
+    'Vibe: ☕ Chill · Café y estudio en Casco Antiguo'
+  );
   const [activePlan, setActivePlan] = useState<PlanData | null>(() => {
     if (typeof window !== 'undefined') {
       try {
@@ -45,8 +127,13 @@ export default function App() {
     return null;
   });
   const [inviteUrl, setInviteUrl] = useState<string>(() => {
-    const host = typeof window !== 'undefined' && window.location.host ? window.location.host : 'planealo-aqui.netlify.app';
-    return `https://${host}/?t=${encodeURIComponent('Café y estudio en Casco Antiguo')}&v=${encodeURIComponent('☕ Chill')}`;
+    const host =
+      typeof window !== 'undefined' && window.location.host
+        ? window.location.host
+        : 'planealo-aqui.netlify.app';
+    return `https://${host}/?t=${encodeURIComponent(
+      'Café y estudio en Casco Antiguo'
+    )}&v=${encodeURIComponent('☕ Chill')}`;
   });
   const [postalTitle, setPostalTitle] = useState<string>('Café y Estudio en Casco');
   const [currentStyle, setCurrentStyle] = useState<'postal' | 'collage' | 'meme'>('postal');
@@ -84,7 +171,7 @@ export default function App() {
   });
 
   const [isSelectingLocationMode, setIsSelectingLocationMode] = useState<boolean>(false);
-  const [userCoords, setUserCoords] = useState<[number, number]>([8.9839, -79.5212]); // Inicial: ~210m del punto
+  const [userCoords, setUserCoords] = useState<[number, number]>([8.9839, -79.5212]);
   const [isSimulatedArrival, setIsSimulatedArrival] = useState<boolean>(false);
   const [hasCelebratedArrival, setHasCelebratedArrival] = useState<boolean>(false);
 
@@ -104,22 +191,117 @@ export default function App() {
   const targetMarkerRef = useRef<L.Marker | null>(null);
   const geofenceCircleRef = useRef<L.Circle | null>(null);
   const polylineRef = useRef<L.Polyline | null>(null);
+  const otherMarkersRef = useRef<Record<string, L.Marker>>({});
   const watchIdRef = useRef<number | null>(null);
 
-  // Activación del Sensor GPS Real
+  // Telemetry & toast refs
+  const lastTelemetrySyncAtRef = useRef<number>(0);
+  const lastTelemetryInsideRef = useRef<boolean | null>(null);
+  const hasPannedForPlanRef = useRef<string | null>(null);
+  const toastTimerRef = useRef<number | null>(null);
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    if (toastTimerRef.current) {
+      window.clearTimeout(toastTimerRef.current);
+    }
+    toastTimerRef.current = window.setTimeout(() => {
+      setToastMessage(null);
+    }, 2800);
+  };
+
+  // Persist alias & avatar locally
+  const updateUserAlias = (nextAlias: string) => {
+    setUserAlias(nextAlias);
+    try {
+      localStorage.setItem('planealo_user_alias', nextAlias);
+    } catch {
+      // ignore storage errors
+    }
+  };
+
+  const updateUserAvatar = (nextAvatar: string) => {
+    setUserAvatar(nextAvatar);
+    try {
+      localStorage.setItem('planealo_user_avatar', nextAvatar);
+    } catch {
+      // ignore storage errors
+    }
+  };
+
+  const resolvedAlias = useMemo(() => {
+    const clean = userAlias.trim();
+    if (clean) return clean.slice(0, 40);
+    if (authUser?.displayName) return authUser.displayName.split(' ')[0].slice(0, 40);
+    return 'Explorador';
+  }, [userAlias, authUser]);
+
+  // ========================================
+  // SUSCRIPCIÓN FIREBASE AUTH
+  // ========================================
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setAuthUser(user);
+      setAuthReady(true);
+      if (user) {
+        setAuthError(null);
+        try {
+          const existingAlias = localStorage.getItem('planealo_user_alias');
+          if (!existingAlias && user.displayName) {
+            const first = user.displayName.split(' ')[0].slice(0, 32);
+            setUserAlias(first);
+            localStorage.setItem('planealo_user_alias', first);
+          }
+        } catch {
+          // safe fallback
+        }
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const handleGoogleLogin = async (): Promise<User | null> => {
+    setAuthBusy(true);
+    setAuthError(null);
+    try {
+      const cred = await signInWithGoogle();
+      showToast(`Conectado como ${cred.user.displayName || 'Usuario'} ⚡`);
+      return cred.user;
+    } catch (err: unknown) {
+      const code = (err as { code?: string })?.code || '';
+      if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') {
+        setAuthError('Inicio de sesión cancelado. Conecta tu Google para sincronizar la sala.');
+      } else {
+        setAuthError('No se pudo iniciar sesión con Google. Revisa si el popup fue bloqueado.');
+      }
+      return null;
+    } finally {
+      setAuthBusy(false);
+    }
+  };
+
+  const handleSignOut = async () => {
+    try {
+      await signOutUser();
+      setLiveParticipants([]);
+      showToast('Sesión cerrada');
+    } catch {
+      showToast('No se pudo cerrar sesión');
+    }
+  };
+
+  // ========================================
+  // GPS REAL
+  // ========================================
   useEffect(() => {
     if (isSimulatedArrival) return;
     if (typeof navigator !== 'undefined' && 'geolocation' in navigator) {
       const watchId = navigator.geolocation.watchPosition(
         (position) => {
-          const newCoords: [number, number] = [
-            position.coords.latitude,
-            position.coords.longitude,
-          ];
-          setUserCoords(newCoords);
+          setUserCoords([position.coords.latitude, position.coords.longitude]);
         },
         () => {
-          // Si no hay permiso o falla el sensor, mantiene la posición inicial
+          // Mantiene posición inicial si no hay permiso GPS
         },
         { enableHighAccuracy: true, timeout: 15000, maximumAge: 5000 }
       );
@@ -156,26 +338,28 @@ export default function App() {
   const toggleSimulateArrival = () => {
     if (!isSimulatedArrival) {
       setIsSimulatedArrival(true);
-      // Coordenadas a menos de 5m del punto de encuentro dinámico
       setUserCoords([targetCoords[0] + 0.00003, targetCoords[1] + 0.00003]);
     } else {
       setIsSimulatedArrival(false);
-      // Posición fuera del perímetro (~210m del punto dinámico)
       setUserCoords([targetCoords[0] - 0.0016, targetCoords[1] - 0.0013]);
     }
   };
 
-  // Initial routing on mount
+  // ========================================
+  // RUTEO INICIAL POR URL
+  // ========================================
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
     const urlParams = new URLSearchParams(window.location.search);
+    const idParam = urlParams.get('id');
     const titleParam = urlParams.get('t');
     const vibeParam = urlParams.get('v');
     const latParam = urlParams.get('lat');
     const lngParam = urlParams.get('lng');
     const planParam = urlParams.get('plan');
     const seenWelcome = localStorage.getItem('planealo_onboarding_seen');
+    const currentDomain = window.location.host || 'planealo-aqui.netlify.app';
 
     if (latParam && lngParam) {
       const pLat = parseFloat(latParam);
@@ -185,7 +369,29 @@ export default function App() {
       }
     }
 
-    if (titleParam || vibeParam) {
+    if (idParam) {
+      setLivePlanId(idParam);
+      setIsGuestMode(true);
+      if (titleParam || vibeParam) {
+        const decodedTitle = titleParam ? decodeURIComponent(titleParam) : 'Plan en grupo';
+        const decodedVibe = vibeParam ? decodeURIComponent(vibeParam) : '☕ Chill';
+        setPlanTitle(decodedTitle);
+        setSelectedVibeText(decodedVibe);
+        setInviteSubtitle(`Vibe: ${decodedVibe} · ${decodedTitle}`);
+        setPostalTitle(decodedTitle);
+        const lat = latParam || targetCoords[0].toFixed(5);
+        const lng = lngParam || targetCoords[1].toFixed(5);
+        setInviteUrl(
+          `https://${currentDomain}/?id=${encodeURIComponent(idParam)}&t=${encodeURIComponent(
+            decodedTitle
+          )}&v=${encodeURIComponent(decodedVibe)}&lat=${lat}&lng=${lng}`
+        );
+      } else {
+        setInviteUrl(`https://${currentDomain}/?id=${encodeURIComponent(idParam)}`);
+        setInviteSubtitle('Conectando con la sala en vivo...');
+      }
+      switchView('view-invite');
+    } else if (titleParam || vibeParam) {
       const decodedTitle = titleParam ? decodeURIComponent(titleParam) : 'Plan en grupo';
       const decodedVibe = vibeParam ? decodeURIComponent(vibeParam) : '☕ Chill';
       setPlanTitle(decodedTitle);
@@ -193,10 +399,13 @@ export default function App() {
       setInviteSubtitle(`Vibe: ${decodedVibe} · ${decodedTitle}`);
       setPostalTitle(decodedTitle);
       setIsGuestMode(true);
-      const currentDomain = window.location.host || 'planealo-aqui.netlify.app';
       const lat = latParam || targetCoords[0].toFixed(5);
       const lng = lngParam || targetCoords[1].toFixed(5);
-      setInviteUrl(`https://${currentDomain}/?t=${encodeURIComponent(decodedTitle)}&v=${encodeURIComponent(decodedVibe)}&lat=${lat}&lng=${lng}`);
+      setInviteUrl(
+        `https://${currentDomain}/?t=${encodeURIComponent(decodedTitle)}&v=${encodeURIComponent(
+          decodedVibe
+        )}&lat=${lat}&lng=${lng}`
+      );
       switchView('view-invite');
     } else if (planParam) {
       loadSharedPlan(planParam);
@@ -209,7 +418,160 @@ export default function App() {
     }
   }, []);
 
-  // Initialize Leaflet map
+  // ========================================
+  // SUSCRIPCIÓN FIRESTORE EN TIEMPO REAL
+  // ========================================
+  useEffect(() => {
+    if (!authReady || !authUser || !livePlanId) {
+      return;
+    }
+
+    setRoomError(null);
+
+    const unsubPlan = subscribeToPlan(
+      livePlanId,
+      (plan) => {
+        if (!plan) {
+          setLivePlan(null);
+          const urlId = new URLSearchParams(window.location.search).get('id');
+          if (!urlId) {
+            try {
+              localStorage.removeItem('planealo_active_plan_id');
+              localStorage.removeItem('planealo_active_plan');
+            } catch {
+              // ignore
+            }
+            setActivePlan(null);
+            setLivePlanId(null);
+          } else {
+            setRoomError('Esta sala no existe o el enlace ya no está disponible.');
+          }
+          return;
+        }
+
+        setLivePlan(plan);
+        setPlanTitle(plan.title);
+        setSelectedVibeText(plan.vibe);
+        setInviteSubtitle(`Vibe: ${plan.vibe} · ${plan.title}`);
+        setPostalTitle(plan.title);
+        setTargetCoords([plan.targetLat, plan.targetLng]);
+
+        if (plan.status === 'active') {
+          const planData: PlanData = {
+            title: plan.title,
+            vibe: plan.vibe,
+            lat: plan.targetLat,
+            lng: plan.targetLng,
+          };
+          setActivePlan(planData);
+          try {
+            localStorage.setItem('planealo_active_plan', JSON.stringify(planData));
+            localStorage.setItem('planealo_active_plan_id', plan.id);
+          } catch {
+            // ignore
+          }
+        } else {
+          setActivePlan(null);
+        }
+
+        const currentDomain =
+          (typeof window !== 'undefined' && window.location.host) || 'planealo-aqui.netlify.app';
+        setInviteUrl(
+          `https://${currentDomain}/?id=${encodeURIComponent(plan.id)}&t=${encodeURIComponent(
+            plan.title
+          )}&v=${encodeURIComponent(plan.vibe)}&lat=${plan.targetLat.toFixed(
+            5
+          )}&lng=${plan.targetLng.toFixed(5)}`
+        );
+
+        if (
+          mapInstanceRef.current &&
+          !isSelectingLocationMode &&
+          hasPannedForPlanRef.current !== plan.id
+        ) {
+          hasPannedForPlanRef.current = plan.id;
+          mapInstanceRef.current.panTo([plan.targetLat, plan.targetLng], { animate: true });
+        }
+      },
+      () => {
+        setRoomError('No se pudo sincronizar la sala en tiempo real.');
+      }
+    );
+
+    const unsubParticipants = subscribeToParticipants(
+      livePlanId,
+      (participants) => {
+        setLiveParticipants(participants);
+      },
+      () => {
+        setRoomError('No se pudo leer la lista de participantes.');
+      }
+    );
+
+    return () => {
+      unsubPlan();
+      unsubParticipants();
+    };
+  }, [authReady, authUser, livePlanId, isSelectingLocationMode]);
+
+  const myParticipantRecord = useMemo(
+    () => (authUser ? liveParticipants.find((p) => p.uid === authUser.uid) || null : null),
+    [authUser, liveParticipants]
+  );
+
+  const hasJoinedCurrentRoom = Boolean(myParticipantRecord);
+  const isHostOfCurrentPlan = Boolean(
+    authUser && livePlan && livePlan.hostId === authUser.uid
+  );
+
+  useEffect(() => {
+    setGuestJoined(hasJoinedCurrentRoom);
+  }, [hasJoinedCurrentRoom]);
+
+  // ========================================
+  // SINCRONIZACIÓN DE TELEMETRÍA GPS EN VIVO
+  // ========================================
+  useEffect(() => {
+    if (!authUser || !livePlanId || !hasJoinedCurrentRoom || livePlan?.status !== 'active') {
+      return;
+    }
+
+    const now = Date.now();
+    const insideChanged = lastTelemetryInsideRef.current !== isInsideGeofence;
+    const elapsed = now - lastTelemetrySyncAtRef.current;
+
+    if (!insideChanged && elapsed < 4000) {
+      return;
+    }
+
+    lastTelemetryInsideRef.current = isInsideGeofence;
+    lastTelemetrySyncAtRef.current = now;
+
+    syncMyTelemetry({
+      planId: livePlanId,
+      uid: authUser.uid,
+      lat: userCoords[0],
+      lng: userCoords[1],
+      distanceMeters,
+      etaLabel: distanceETA.etaLabel,
+      isInside: isInsideGeofence,
+    }).catch(() => {
+      // No interrumpir UX en segundo plano si la sala se cerró justo en ese instante
+    });
+  }, [
+    authUser,
+    livePlanId,
+    hasJoinedCurrentRoom,
+    livePlan?.status,
+    userCoords,
+    distanceMeters,
+    distanceETA.etaLabel,
+    isInsideGeofence,
+  ]);
+
+  // ========================================
+  // INICIALIZACIÓN DEL MAPA LEAFLET
+  // ========================================
   useEffect(() => {
     if (!mapContainerRef.current) return;
 
@@ -333,6 +695,86 @@ export default function App() {
     }
   }, [userCoords, targetCoords, isInsideGeofence, distanceETA.distanceLabel, distanceETA.etaLabel]);
 
+  // 5. Marcadores en vivo de otros participantes en la sala
+  useEffect(() => {
+    if (!mapInstanceRef.current) return;
+    const map = mapInstanceRef.current;
+
+    const activeOthers = livePlanId
+      ? liveParticipants.filter((p) => p.uid !== authUser?.uid)
+      : [];
+    const activeIds = new Set(activeOthers.map((p) => p.uid));
+
+    // Limpiar marcadores de participantes que salieron o de salas previas
+    Object.keys(otherMarkersRef.current).forEach((uid) => {
+      if (!activeIds.has(uid)) {
+        map.removeLayer(otherMarkersRef.current[uid]);
+        delete otherMarkersRef.current[uid];
+      }
+    });
+
+    activeOthers.forEach((p) => {
+      const arrived = p.status === 'arrived';
+      const safeName = escapeHtml(p.name);
+      const safeAvatar = escapeHtml(p.avatar || '⚡');
+      const safePulse = p.quickPulse ? escapeHtml(p.quickPulse) : '';
+      const distInfo = formatDistanceETA(p.distanceMeters);
+      const borderColor = arrived ? '#CCFF00' : '#FFFFFF';
+      const statusLine = arrived
+        ? '📍 En el punto (Check-in ✅)'
+        : `🚀 A ${escapeHtml(distInfo.distanceLabel)} (${escapeHtml(p.etaLabel)})`;
+
+      const iconHtml = `
+        <div style="display:flex; flex-direction:column; align-items:center; transform: translateY(-4px);">
+          <div style="background:#161A18; border:2px solid ${borderColor}; border-radius:50%; width:36px; height:36px; display:flex; align-items:center; justify-content:center; font-size:17px; box-shadow:0 4px 14px rgba(0,0,0,0.6);">
+            ${safeAvatar}
+          </div>
+          <span style="margin-top:2px; background:#0A0C0B; color:${borderColor}; border:1px solid rgba(255,255,255,0.2); padding:1px 6px; border-radius:8px; font-size:10px; font-weight:800; white-space:nowrap;">
+            ${safeName}
+          </span>
+        </div>
+      `;
+
+      const popupHtml = `
+        <div style="text-align:center; padding:3px; min-width:130px;">
+          <b style="color:${borderColor}; font-size:13px;">${safeAvatar} ${safeName}${
+        p.role === 'host' ? ' (Host)' : ''
+      }</b>
+          <p style="color:#E6E8E7; font-size:11px; margin-top:3px;">${statusLine}</p>
+          ${
+            safePulse
+              ? `<p style="color:#CCFF00; font-size:11px; font-weight:700; margin-top:3px;">⚡ ${safePulse}</p>`
+              : ''
+          }
+        </div>
+      `;
+
+      const existingMarker = otherMarkersRef.current[p.uid];
+      if (!existingMarker) {
+        const icon = L.divIcon({
+          className: 'custom-participant-marker',
+          html: iconHtml,
+          iconSize: [70, 56],
+          iconAnchor: [35, 28],
+        });
+        otherMarkersRef.current[p.uid] = L.marker([p.lat, p.lng], { icon })
+          .addTo(map)
+          .bindPopup(popupHtml);
+      } else {
+        existingMarker.setLatLng([p.lat, p.lng]);
+        existingMarker.setIcon(
+          L.divIcon({
+            className: 'custom-participant-marker',
+            html: iconHtml,
+            iconSize: [70, 56],
+            iconAnchor: [35, 28],
+          })
+        );
+        existingMarker.setPopupContent(popupHtml);
+      }
+    });
+  }, [liveParticipants, authUser, livePlanId]);
+
   // Manejador de toques en el mapa en modo de selección de ubicación
   useEffect(() => {
     if (!mapInstanceRef.current) return;
@@ -362,6 +804,12 @@ export default function App() {
   };
 
   const completeOnboarding = () => {
+    localStorage.setItem('planealo_onboarding_seen', 'true');
+    switchView('view-map');
+  };
+
+  const signInAndContinueOnboarding = async () => {
+    await handleGoogleLogin();
     localStorage.setItem('planealo_onboarding_seen', 'true');
     switchView('view-map');
   };
@@ -405,11 +853,15 @@ export default function App() {
         (pos) => {
           setTargetCoords([pos.coords.latitude, pos.coords.longitude]);
           if (mapInstanceRef.current) {
-            mapInstanceRef.current.panTo([pos.coords.latitude, pos.coords.longitude], { animate: true });
+            mapInstanceRef.current.panTo([pos.coords.latitude, pos.coords.longitude], {
+              animate: true,
+            });
           }
+          showToast('Punto fijado en tu GPS actual 🎯');
         },
         () => {
           setTargetCoords([userCoords[0], userCoords[1]]);
+          showToast('Punto fijado en tu posición del mapa');
         },
         { enableHighAccuracy: true, timeout: 8000 }
       );
@@ -418,8 +870,29 @@ export default function App() {
     }
   };
 
-  const generateInvite = () => {
+  // ========================================
+  // CREACIÓN DE SALA EN VIVO (HOST)
+  // ========================================
+  const generateInvite = async () => {
+    if (creatingPlan) return;
+    setRoomError(null);
+
+    let activeUser = auth.currentUser;
+    if (!activeUser) {
+      activeUser = await handleGoogleLogin();
+      if (!activeUser) return;
+    }
+
     const title = planTitle.trim() || 'Plan en grupo';
+    const hostAlias =
+      userAlias.trim() ||
+      activeUser.displayName?.split(' ')[0] ||
+      'Anfitrión';
+    if (!userAlias.trim()) {
+      updateUserAlias(hostAlias);
+    }
+
+    const newPlanId = generateSafePlanId();
     const planData: PlanData = {
       title,
       vibe: selectedVibeText,
@@ -427,42 +900,76 @@ export default function App() {
       lng: targetCoords[1],
     };
 
-    // Guardar como plan activo en localStorage para que el Host lo tenga persistente
+    setCreatingPlan(true);
     try {
-      localStorage.setItem('planealo_active_plan', JSON.stringify(planData));
+      await createLivePlanRoom({
+        planId: newPlanId,
+        title,
+        vibe: selectedVibeText,
+        targetLat: targetCoords[0],
+        targetLng: targetCoords[1],
+        hostUid: activeUser.uid,
+        hostName: hostAlias,
+        hostAvatar: userAvatar || '⚡',
+        hostLat: userCoords[0],
+        hostLng: userCoords[1],
+        distanceMeters,
+        etaLabel: distanceETA.etaLabel,
+        isInside: isInsideGeofence,
+      });
+
+      try {
+        localStorage.setItem('planealo_active_plan', JSON.stringify(planData));
+        localStorage.setItem('planealo_active_plan_id', newPlanId);
+      } catch {
+        // safe fallback
+      }
+
+      setActivePlan(planData);
+      setLivePlanId(newPlanId);
+      setIsGuestMode(false);
+      setInviteSubtitle(`Vibe: ${selectedVibeText} · ${title}`);
+      setPostalTitle(title);
+
+      const currentDomain =
+        (typeof window !== 'undefined' && window.location.host) || 'planealo-aqui.netlify.app';
+      const lat = targetCoords[0].toFixed(5);
+      const lng = targetCoords[1].toFixed(5);
+      const fullInviteUrl = `https://${currentDomain}/?id=${encodeURIComponent(
+        newPlanId
+      )}&t=${encodeURIComponent(title)}&v=${encodeURIComponent(
+        selectedVibeText
+      )}&lat=${lat}&lng=${lng}`;
+      setInviteUrl(fullInviteUrl);
+
+      showToast('Sala en vivo creada ⚡');
+      switchView('view-invite');
     } catch {
-      // safe fallback
+      setRoomError('Error al crear la sala en vivo. Verifica tu conexión e inténtalo de nuevo.');
+    } finally {
+      setCreatingPlan(false);
     }
-    setActivePlan(planData);
-
-    setInviteSubtitle(`Vibe: ${selectedVibeText} · ${title}`);
-    setPostalTitle(title);
-
-    // Tomar el dominio actual del navegador de forma automática y limpia
-    const currentDomain = (typeof window !== 'undefined' && window.location.host) || 'planealo-aqui.netlify.app';
-    const encodedTitle = encodeURIComponent(title);
-    const encodedVibe = encodeURIComponent(selectedVibeText);
-    const lat = targetCoords[0].toFixed(5);
-    const lng = targetCoords[1].toFixed(5);
-
-    const fullInviteUrl = `https://${currentDomain}/?t=${encodedTitle}&v=${encodedVibe}&lat=${lat}&lng=${lng}`;
-    setInviteUrl(fullInviteUrl);
-
-    switchView('view-invite');
   };
 
   const openActivePlan = () => {
-    if (activePlan) {
+    if (livePlan) {
+      setInviteSubtitle(`Vibe: ${livePlan.vibe} · ${livePlan.title}`);
+      setPostalTitle(livePlan.title);
+    } else if (activePlan) {
       setInviteSubtitle(`Vibe: ${activePlan.vibe} · ${activePlan.title}`);
       setPostalTitle(activePlan.title);
-      const currentDomain = (typeof window !== 'undefined' && window.location.host) || 'planealo-aqui.netlify.app';
-      const encodedTitle = encodeURIComponent(activePlan.title);
-      const encodedVibe = encodeURIComponent(activePlan.vibe);
+      const currentDomain =
+        (typeof window !== 'undefined' && window.location.host) || 'planealo-aqui.netlify.app';
       const lat = (activePlan.lat ?? targetCoords[0]).toFixed(5);
       const lng = (activePlan.lng ?? targetCoords[1]).toFixed(5);
-      setInviteUrl(`https://${currentDomain}/?t=${encodedTitle}&v=${encodedVibe}&lat=${lat}&lng=${lng}`);
+      const idQuery = livePlanId ? `id=${encodeURIComponent(livePlanId)}&` : '';
+      setInviteUrl(
+        `https://${currentDomain}/?${idQuery}t=${encodeURIComponent(
+          activePlan.title
+        )}&v=${encodeURIComponent(activePlan.vibe)}&lat=${lat}&lng=${lng}`
+      );
     }
-    setIsGuestMode(false);
+    setIsGuestMode(!isHostOfCurrentPlan);
     switchView('view-invite');
   };
 
@@ -481,46 +988,137 @@ export default function App() {
     } catch {
       setInviteSubtitle('Vibe: ☕ Chill · Café en grupo');
     }
-    const currentDomain = (typeof window !== 'undefined' && window.location.host) || 'planealo-aqui.netlify.app';
+    const currentDomain =
+      (typeof window !== 'undefined' && window.location.host) || 'planealo-aqui.netlify.app';
     setInviteUrl(`https://${currentDomain}/?plan=${planId}`);
   };
 
-  const joinAsGuest = () => {
-    setGuestJoined(true);
-    confetti({
-      particleCount: 60,
-      spread: 60,
-      origin: { y: 0.7 },
-      colors: ['#CCFF00', '#B5E600', '#FFFFFF', '#161A18'],
-    });
+  // ========================================
+  // UNIRSE COMO INVITADO & PULSOS RÁPIDOS
+  // ========================================
+  const joinAsGuest = async () => {
+    if (joiningRoom) return;
+    setRoomError(null);
+
+    if (!livePlanId) {
+      setGuestJoined(true);
+      confetti({
+        particleCount: 60,
+        spread: 60,
+        origin: { y: 0.7 },
+        colors: ['#CCFF00', '#B5E600', '#FFFFFF', '#161A18'],
+      });
+      return;
+    }
+
+    let activeUser = auth.currentUser;
+    if (!activeUser) {
+      activeUser = await handleGoogleLogin();
+      if (!activeUser) return;
+    }
+
+    const cleanAlias =
+      userAlias.trim() ||
+      activeUser.displayName?.split(' ')[0] ||
+      'Invitado';
+    if (!userAlias.trim()) {
+      updateUserAlias(cleanAlias);
+    }
+
+    setJoiningRoom(true);
+    try {
+      await joinOrUpdateGuestInRoom({
+        planId: livePlanId,
+        uid: activeUser.uid,
+        name: cleanAlias,
+        avatar: userAvatar || '🏃',
+        lat: userCoords[0],
+        lng: userCoords[1],
+        distanceMeters,
+        etaLabel: distanceETA.etaLabel,
+        isInside: isInsideGeofence,
+      });
+
+      setGuestJoined(true);
+      lastTelemetryInsideRef.current = isInsideGeofence;
+      lastTelemetrySyncAtRef.current = Date.now();
+
+      confetti({
+        particleCount: 60,
+        spread: 60,
+        origin: { y: 0.7 },
+        colors: ['#CCFF00', '#B5E600', '#FFFFFF', '#161A18'],
+      });
+      showToast('¡Conectado en vivo al plan! 🚀');
+    } catch {
+      setRoomError('No pudimos unirte a esta sala. Verifica si el encuentro sigue activo.');
+    } finally {
+      setJoiningRoom(false);
+    }
+  };
+
+  const handleQuickPulse = async (pulse: string) => {
+    if (!authUser || !livePlanId || !hasJoinedCurrentRoom || livePlan?.status !== 'active') return;
+    if (sendingPulse) return;
+
+    setSendingPulse(true);
+    try {
+      await sendQuickPulse({
+        planId: livePlanId,
+        uid: authUser.uid,
+        name: resolvedAlias,
+        avatar: userAvatar || '⚡',
+        quickPulse: pulse,
+      });
+      showToast(`Pulso enviado: ${pulse}`);
+    } catch {
+      setRoomError('No se pudo enviar el pulso rápido.');
+    } finally {
+      setSendingPulse(false);
+    }
   };
 
   const copyInviteLink = () => {
     navigator.clipboard
       .writeText(inviteUrl)
       .then(() => {
-        alert('¡Enlace copiado al portapapeles!');
+        showToast('¡Enlace en vivo copiado al portapapeles! 🔗');
       })
       .catch(() => {
-        alert('Enlace listo: ' + inviteUrl);
+        showToast('Copia el enlace manualmente arriba');
       });
   };
 
-  const shareOnWhatsApp = () => {
-    const message = encodeURIComponent(`¡Únete a Planealo Aquí! Coordinemos el punto de encuentro aquí: ${inviteUrl}`);
-    window.open(`https://api.whatsapp.com/send?text=${message}`, '_blank');
-  };
+  const whatsappShareHref = `https://api.whatsapp.com/send?text=${encodeURIComponent(
+    `¡Únete en vivo a "${planTitle}" en Planealo Aquí! ⚡ Mira dónde vamos y haz check-in aquí: ${inviteUrl}`
+  )}`;
 
-  const finishPlanAndCapture = () => {
+  const finishPlanAndCapture = async () => {
+    if (finishingPlan) return;
+    setFinishingPlan(true);
+
     try {
-      localStorage.removeItem('planealo_active_plan');
+      if (livePlanId && livePlan?.status === 'active' && isHostOfCurrentPlan) {
+        await finishLivePlan(livePlanId);
+      }
+      try {
+        localStorage.removeItem('planealo_active_plan');
+        localStorage.removeItem('planealo_active_plan_id');
+      } catch {
+        // safe fallback
+      }
+      setActivePlan(null);
+      switchView('view-memory');
     } catch {
-      // safe fallback
+      setRoomError('No se pudo finalizar el encuentro. Intenta de nuevo.');
+    } finally {
+      setFinishingPlan(false);
     }
-    setActivePlan(null);
-    switchView('view-memory');
   };
 
+  // ========================================
+  // RECUERDO / POSTAL COLECTIVA
+  // ========================================
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -548,6 +1146,34 @@ export default function App() {
     }
   };
 
+  const formattedTodayDate = useMemo(() => {
+    try {
+      return new Date().toLocaleDateString('es-ES', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+      });
+    } catch {
+      return 'Hoy';
+    }
+  }, []);
+
+  const memoryAttendees = useMemo(() => {
+    if (liveParticipants.length > 0) {
+      return liveParticipants.map((p) => ({
+        name: p.name,
+        role: p.role === 'host' ? 'Host' : undefined,
+        avatar: p.avatar || '👤',
+      }));
+    }
+    return [{ name: resolvedAlias || 'Tú', role: 'Host', avatar: userAvatar || '⚡' }];
+  }, [liveParticipants, resolvedAlias, userAvatar]);
+
+  const arrivedCount = useMemo(
+    () => liveParticipants.filter((p) => p.status === 'arrived').length,
+    [liveParticipants]
+  );
+
   const handleSavePostal = async () => {
     try {
       await downloadPostcardAsImage({
@@ -556,17 +1182,13 @@ export default function App() {
         style: currentStyle,
         quote: getMemoryQuote(),
         uploadedPhotoUrl: uploadedPhoto,
-        date: '6 de Noviembre, 2026',
-        location: 'Casco Antiguo, Panamá',
-        attendees: [
-          { name: 'Tú', role: 'Host', avatar: '👤' },
-          { name: 'Sofía R.', avatar: '👩‍💻' },
-          { name: 'Mateo V.', avatar: '🧑‍🎨' },
-        ],
+        date: formattedTodayDate,
+        location: `${targetCoords[0].toFixed(3)}, ${targetCoords[1].toFixed(3)}`,
+        attendees: memoryAttendees,
       });
-      alert('¡Recuerdo descargado como imagen PNG de alta calidad!');
+      showToast('¡Recuerdo descargado como PNG de alta calidad! 💾');
     } catch {
-      alert('¡Postal guardada!');
+      showToast('No se pudo generar la descarga PNG');
     }
   };
 
@@ -578,19 +1200,17 @@ export default function App() {
         style: currentStyle,
         quote: getMemoryQuote(),
         uploadedPhotoUrl: uploadedPhoto,
-        date: '6 de Noviembre, 2026',
-        location: 'Casco Antiguo, Panamá',
-        attendees: [
-          { name: 'Tú', role: 'Host', avatar: '👤' },
-          { name: 'Sofía R.', avatar: '👩‍💻' },
-          { name: 'Mateo V.', avatar: '🧑‍🎨' },
-        ],
+        date: formattedTodayDate,
+        location: `${targetCoords[0].toFixed(3)}, ${targetCoords[1].toFixed(3)}`,
+        attendees: memoryAttendees,
       });
-      if (!shared) {
-        alert('¡Imagen lista para compartir!');
+      if (shared) {
+        showToast('¡Recuerdo listo para compartir! 🚀');
+      } else {
+        showToast('Compartir cancelado o no disponible');
       }
     } catch {
-      alert('¡Recuerdo listo para compartir!');
+      showToast('No se pudo compartir la postal');
     }
   };
 
@@ -612,7 +1232,7 @@ export default function App() {
             </div>
             <h1 className="welcome-title">Conecta sin ruido, vive el momento.</h1>
             <p className="welcome-subtitle">
-              Organiza planes al instante, reúne a tu gente y conserva recuerdos significativos.
+              Organiza planes al instante, coordina llegadas en vivo y conserva recuerdos significativos.
             </p>
           </div>
 
@@ -620,13 +1240,20 @@ export default function App() {
             <button className="btn-neon" onClick={completeOnboarding}>
               Comenzar
             </button>
-            <p style={{ textAlign: 'center', fontSize: '0.85rem', color: 'var(--text-gray)', marginTop: '12px' }}>
+            <p
+              style={{
+                textAlign: 'center',
+                fontSize: '0.85rem',
+                color: 'var(--text-gray)',
+                marginTop: '12px',
+              }}
+            >
               ¿Ya tienes cuenta?{' '}
               <span
                 style={{ color: 'var(--text-white)', fontWeight: 700, cursor: 'pointer' }}
-                onClick={completeOnboarding}
+                onClick={signInAndContinueOnboarding}
               >
-                Iniciar sesión
+                {authBusy ? 'Conectando...' : 'Iniciar sesión con Google'}
               </span>
             </p>
           </div>
@@ -641,22 +1268,66 @@ export default function App() {
           <div className="map-overlay-top">
             <div className="top-row">
               <div className="brand-pill-dark">Planealo Aquí ⚡</div>
-              <button className="icon-btn-dark" onClick={goToMemory}>
-                📸
-              </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <button
+                  type="button"
+                  className="radar-btn-sim"
+                  style={{
+                    background: 'rgba(22, 26, 24, 0.88)',
+                    backdropFilter: 'blur(16px)',
+                    padding: '9px 12px',
+                    borderRadius: '24px',
+                    border: authUser
+                      ? '1px solid rgba(204, 255, 0, 0.4)'
+                      : '1px solid var(--card-border)',
+                    color: authUser ? '#CCFF00' : '#FFFFFF',
+                  }}
+                  onClick={() => (authUser ? handleSignOut() : handleGoogleLogin())}
+                  disabled={authBusy}
+                  title={authUser ? 'Cerrar sesión' : 'Conectar con Google'}
+                >
+                  {authBusy
+                    ? '...'
+                    : authUser
+                    ? `${userAvatar} ${resolvedAlias}`
+                    : '🔐 Conectar'}
+                </button>
+                <button className="icon-btn-dark" onClick={goToMemory} title="Recuerdos">
+                  📸
+                </button>
+              </div>
             </div>
 
             {/* Banner interactivo de selección de punto en mapa */}
             {isSelectingLocationMode ? (
               <div className="selector-banner">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '0.75rem', color: 'var(--accent-neon)', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span className="radar-pulse-dot" style={{ backgroundColor: '#CCFF00', boxShadow: '0 0 8px #CCFF00' }}></span>
+                  <span
+                    style={{
+                      fontSize: '0.75rem',
+                      color: 'var(--accent-neon)',
+                      fontWeight: 800,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                    }}
+                  >
+                    <span
+                      className="radar-pulse-dot"
+                      style={{ backgroundColor: '#CCFF00', boxShadow: '0 0 8px #CCFF00' }}
+                    ></span>
                     SELECCIONA EL ENCUENTRO
                   </span>
                   <button
                     onClick={cancelLocationSelection}
-                    style={{ background: 'none', border: 'none', color: 'var(--text-gray)', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer' }}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: 'var(--text-gray)',
+                      fontSize: '0.75rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                    }}
                   >
                     ✕ Cancelar
                   </button>
@@ -665,12 +1336,30 @@ export default function App() {
                   Toca cualquier lugar del mapa para reubicar el pin o arrástralo directamente.
                 </p>
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                  <span style={{ fontSize: '0.72rem', color: 'var(--text-gray)', background: 'rgba(255,255,255,0.06)', padding: '5px 8px', borderRadius: '8px', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <span
+                    style={{
+                      fontSize: '0.72rem',
+                      color: 'var(--text-gray)',
+                      background: 'rgba(255,255,255,0.06)',
+                      padding: '5px 8px',
+                      borderRadius: '8px',
+                      flex: 1,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
                     📍 {targetCoords[0].toFixed(4)}, {targetCoords[1].toFixed(4)}
                   </span>
                   <button
                     className="radar-btn-sim"
-                    style={{ background: 'var(--accent-neon)', color: '#0A0C0B', border: 'none', padding: '5px 12px', fontWeight: 800 }}
+                    style={{
+                      background: 'var(--accent-neon)',
+                      color: '#0A0C0B',
+                      border: 'none',
+                      padding: '5px 12px',
+                      fontWeight: 800,
+                    }}
                     onClick={confirmLocationSelection}
                   >
                     Confirmar Punto ✅
@@ -710,33 +1399,43 @@ export default function App() {
                 </button>
               </div>
             )}
-            {/* Píldora flotante para que el Host supervise su plan activo en cualquier momento */}
-            {activePlan && (
-              <div
-                className="active-plan-pill"
-                id="map-plan-pill"
-                onClick={openActivePlan}
-              >
+
+            {/* Píldora flotante para supervisar la sala en vivo */}
+            {(activePlan || livePlan) && livePlan?.status !== 'finished' && (
+              <div className="active-plan-pill" id="map-plan-pill" onClick={openActivePlan}>
                 <div>
-                  <span style={{ fontSize: '0.75rem', color: 'var(--accent-neon)', fontWeight: 800, display: 'block' }}>
-                    ⚡ PLAN ACTIVO
+                  <span
+                    style={{
+                      fontSize: '0.75rem',
+                      color: 'var(--accent-neon)',
+                      fontWeight: 800,
+                      display: 'block',
+                    }}
+                  >
+                    ⚡ SALA EN VIVO
                   </span>
-                  <span style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--text-white)' }} id="map-pill-title">
-                    {activePlan.title}
+                  <span
+                    style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--text-white)' }}
+                    id="map-pill-title"
+                  >
+                    {livePlan?.title || activePlan?.title}
                   </span>
                 </div>
                 <span
                   style={{
-                    fontSize: '0.85rem',
+                    fontSize: '0.82rem',
                     background: 'rgba(204,255,0,0.15)',
                     color: 'var(--accent-neon)',
                     padding: '4px 10px',
                     borderRadius: '12px',
                     fontWeight: 800,
+                    whiteSpace: 'nowrap',
                   }}
                   id="map-pill-count"
                 >
-                  {guestJoined ? '4' : '3'} en camino →
+                  {liveParticipants.length > 0
+                    ? `${arrivedCount}/${liveParticipants.length} en punto →`
+                    : 'Abrir sala →'}
                 </span>
               </div>
             )}
@@ -753,20 +1452,32 @@ export default function App() {
         {/* ========================================
              VISTA 2: CREAR PLAN
              ======================================== */}
-        <div id="view-create" className={`solid-view ${currentView === 'view-create' ? 'active' : ''}`}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+        <div
+          id="view-create"
+          className={`solid-view ${currentView === 'view-create' ? 'active' : ''}`}
+        >
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: '12px',
+            }}
+          >
             <h3
               style={{ cursor: 'pointer', fontSize: '0.95rem', color: 'var(--text-gray)' }}
               onClick={() => switchView('view-map')}
             >
               ← Cancelar
             </h3>
-            <span style={{ fontWeight: 800, color: 'var(--accent-neon)', fontSize: '0.9rem' }}>Paso 1 de 2</span>
+            <span style={{ fontWeight: 800, color: 'var(--accent-neon)', fontSize: '0.9rem' }}>
+              Sala en Vivo
+            </span>
           </div>
           <h1>Nuevo Plan</h1>
-          <p className="subtitle">Define la vibra y el propósito del encuentro.</p>
+          <p className="subtitle">Define la vibra, el punto y tu alias para la sala.</p>
 
-          <div style={{ marginBottom: '16px' }}>
+          <div style={{ marginBottom: '14px' }}>
             <label
               style={{
                 fontSize: '0.85rem',
@@ -782,6 +1493,7 @@ export default function App() {
               type="text"
               id="plan-title"
               className="input-dark"
+              maxLength={100}
               value={planTitle}
               onChange={(e) => setPlanTitle(e.target.value)}
             />
@@ -792,13 +1504,13 @@ export default function App() {
               fontSize: '0.85rem',
               fontWeight: 700,
               display: 'block',
-              marginBottom: '10px',
+              marginBottom: '8px',
               color: 'var(--text-white)',
             }}
           >
             Selecciona la Vibe
           </label>
-          <div className="vibe-grid">
+          <div className="vibe-grid" style={{ marginBottom: '14px' }}>
             {VIBE_OPTIONS.map((v) => {
               const isSelected = selectedVibeText.includes(v.name);
               return (
@@ -814,10 +1526,76 @@ export default function App() {
             })}
           </div>
 
+          {/* Identidad rápida en la sala */}
+          <div
+            className="card-dark"
+            style={{ marginBottom: '14px', padding: '16px', border: '1px solid var(--card-border)' }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: '8px',
+              }}
+            >
+              <label style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-white)' }}>
+                Tu Alias en el Plan
+              </label>
+              <span
+                style={{
+                  fontSize: '0.72rem',
+                  color: authUser ? 'var(--accent-neon)' : 'var(--text-gray)',
+                  fontWeight: 700,
+                }}
+              >
+                {authUser ? `✓ ${authUser.email}` : 'Google requerido al crear'}
+              </span>
+            </div>
+            <input
+              type="text"
+              className="input-dark"
+              style={{ padding: '12px 14px', fontSize: '0.92rem', marginBottom: '10px' }}
+              placeholder="Ej. Carlos M."
+              maxLength={40}
+              value={userAlias}
+              onChange={(e) => updateUserAlias(e.target.value)}
+            />
+            <div className="avatar-row">
+              {AVATAR_OPTIONS.map((av) => (
+                <button
+                  key={av}
+                  type="button"
+                  className={`avatar-chip ${userAvatar === av ? 'selected' : ''}`}
+                  onClick={() => updateUserAvatar(av)}
+                >
+                  {av}
+                </button>
+              ))}
+            </div>
+          </div>
+
           {/* Selector dinámico de Punto de Encuentro */}
-          <div className="card-dark" style={{ marginTop: '14px', marginBottom: '16px', border: '1px solid var(--card-border)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-              <label style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-white)', marginBottom: 0 }}>
+          <div
+            className="card-dark"
+            style={{ marginBottom: '16px', padding: '16px', border: '1px solid var(--card-border)' }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: '6px',
+              }}
+            >
+              <label
+                style={{
+                  fontSize: '0.85rem',
+                  fontWeight: 700,
+                  color: 'var(--text-white)',
+                  marginBottom: 0,
+                }}
+              >
                 📍 Punto de Encuentro
               </label>
               <span
@@ -834,7 +1612,7 @@ export default function App() {
               </span>
             </div>
             <p style={{ fontSize: '0.78rem', color: 'var(--text-gray)', marginBottom: '10px' }}>
-              Ubicación geográfica donde se trazará la geocerca activa de 50 metros.
+              Ubicación exacta donde se trazará la geocerca activa de 50 metros.
             </p>
             <div style={{ display: 'flex', gap: '8px' }}>
               <button
@@ -854,52 +1632,91 @@ export default function App() {
             </div>
           </div>
 
+          {(authError || roomError) && (
+            <p style={{ color: '#ff8585', fontSize: '0.8rem', marginBottom: '10px', textAlign: 'center' }}>
+              {authError || roomError}
+            </p>
+          )}
+
           <div className="view-footer">
-            <button className="btn-neon" onClick={generateInvite}>
-              Armar enlace de invitación
+            <button className="btn-neon" onClick={generateInvite} disabled={creatingPlan || authBusy}>
+              {creatingPlan
+                ? 'Creando sala en vivo...'
+                : authUser
+                ? 'Armar enlace en vivo ⚡'
+                : 'Conectar con Google y armar sala ⚡'}
             </button>
           </div>
         </div>
 
         {/* ========================================
-             VISTA 3: SALA DE INVITACIÓN
+             VISTA 3: SALA DE INVITACIÓN EN VIVO
              ======================================== */}
-        <div id="view-invite" className={`solid-view ${currentView === 'view-invite' ? 'active' : ''}`}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+        <div
+          id="view-invite"
+          className={`solid-view ${currentView === 'view-invite' ? 'active' : ''}`}
+        >
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: '12px',
+            }}
+          >
             <h3
               style={{ cursor: 'pointer', fontSize: '0.95rem', color: 'var(--text-gray)' }}
               onClick={() => switchView('view-map')}
             >
               ← Volver al Mapa
             </h3>
-            <span
-              style={{
-                fontSize: '0.85rem',
-                background: 'rgba(204,255,0,0.1)',
-                color: 'var(--accent-neon)',
-                padding: '6px 12px',
-                borderRadius: '12px',
-                fontWeight: 800,
-              }}
-            >
-              Plan Activo
+            <span className={`live-badge ${livePlan?.status === 'finished' ? 'finished' : ''}`}>
+              {livePlan?.status === 'finished'
+                ? '🏁 Finalizado'
+                : liveParticipants.length > 0
+                ? `⚡ En vivo · ${arrivedCount}/${liveParticipants.length} en punto`
+                : '⚡ Sala Activa'}
             </span>
           </div>
-          <h1>¡Plan listo para rodar! 🔥</h1>
+
+          <h1>
+            {livePlan?.status === 'finished'
+              ? '¡Encuentro completado! 🏁'
+              : '¡Plan listo para rodar! 🔥'}
+          </h1>
           <p className="subtitle" id="invite-subtitle">
             {inviteSubtitle}
           </p>
 
-          <div className="card-dark" style={{ textAlign: 'center', border: '2px dashed var(--accent-neon)' }}>
-            <p style={{ fontSize: '0.85rem', color: 'var(--text-gray)', marginBottom: '6px' }}>
-              Enlace rápido para compartir
+          {(authError || roomError) && (
+            <div
+              className="card-dark"
+              style={{
+                borderColor: 'rgba(255, 107, 107, 0.45)',
+                background: 'rgba(255, 107, 107, 0.08)',
+                padding: '12px 16px',
+              }}
+            >
+              <p style={{ color: '#ff9b9b', fontSize: '0.82rem', margin: 0 }}>
+                {authError || roomError}
+              </p>
+            </div>
+          )}
+
+          {/* Bloque de Compartir Enlace */}
+          <div
+            className="card-dark"
+            style={{ textAlign: 'center', border: '2px dashed var(--accent-neon)', padding: '16px' }}
+          >
+            <p style={{ fontSize: '0.8rem', color: 'var(--text-gray)', marginBottom: '6px' }}>
+              Enlace en tiempo real para compartir
             </p>
             <h3
               id="invite-url-text"
               style={{
                 color: 'var(--accent-neon)',
                 marginBottom: '12px',
-                fontSize: '1.1rem',
+                fontSize: '0.95rem',
                 wordBreak: 'break-all',
               }}
             >
@@ -915,107 +1732,276 @@ export default function App() {
                   textAlign: 'center',
                   cursor: 'pointer',
                   background: 'var(--bg-dark)',
+                  fontWeight: 700,
                 }}
                 onClick={copyInviteLink}
               >
                 Copiar Enlace
               </button>
-              <button
+              <a
                 className="btn-whatsapp"
                 style={{ padding: '10px', fontSize: '0.85rem' }}
-                onClick={shareOnWhatsApp}
+                href={whatsappShareHref}
+                target="_blank"
+                rel="noopener noreferrer"
               >
                 WhatsApp
-              </button>
+              </a>
             </div>
           </div>
 
-          <div className="card-dark">
-            <h4 id="participants-title" style={{ fontSize: '0.95rem', marginBottom: '8px', color: 'var(--text-white)' }}>
-              Amigos en camino ({3 + (guestJoined ? 1 : 0)})
-            </h4>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  fontSize: '0.85rem',
-                }}
+          {/* Paso 1 para invitado no conectado: Login rápido con Google */}
+          {!authUser && (
+            <div
+              className="card-dark"
+              style={{ borderColor: 'rgba(204, 255, 0, 0.4)', padding: '16px' }}
+            >
+              <h4 style={{ fontSize: '0.95rem', marginBottom: '6px', color: 'var(--text-white)' }}>
+                Conéctate para entrar en vivo ⚡
+              </h4>
+              <p style={{ fontSize: '0.8rem', color: 'var(--text-gray)', marginBottom: '12px' }}>
+                Inicia sesión con Google en 1 toque para ver al grupo en el mapa, enviar pulsos y
+                marcar tu llegada.
+              </p>
+              <button
+                className="btn-neon"
+                style={{ padding: '13px', fontSize: '0.95rem' }}
+                onClick={handleGoogleLogin}
+                disabled={authBusy}
               >
-                <span style={{ color: 'var(--text-white)' }}>
-                  👤 Tú{' '}
-                  <span
-                    style={{
-                      background: 'rgba(204,255,0,0.15)',
-                      color: 'var(--accent-neon)',
-                      padding: '2px 6px',
-                      borderRadius: '6px',
-                      fontSize: '0.7rem',
-                    }}
-                  >
-                    Host
-                  </span>
-                </span>
-                <span style={{ color: isInsideGeofence ? '#CCFF00' : '#ff6b6b' }}>
-                  {isInsideGeofence ? '📍 En el punto (Check-in ✅)' : `🏃 A ${distanceETA.distanceLabel}`}
-                </span>
-              </div>
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  fontSize: '0.85rem',
-                }}
-              >
-                <span style={{ color: 'var(--text-gray)' }}>👩💻 Sofía R.</span>
-                <span
-                  style={{ color: guestJoined ? '#CCFF00' : 'var(--accent-neon)' }}
-                  id="status-sofia"
-                >
-                  {guestJoined ? '✅ ¡Ya vas en camino!' : '🚀 En camino (5 min)'}
-                </span>
-              </div>
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  fontSize: '0.85rem',
-                }}
-              >
-                <span style={{ color: 'var(--text-gray)' }}>🧑🎨 Mateo V.</span>
-                <span style={{ color: 'var(--accent-neon)' }}>🚀 En camino (8 min)</span>
-              </div>
+                {authBusy ? 'Conectando...' : 'Conectar con Google ⚡'}
+              </button>
             </div>
+          )}
+
+          {/* Paso 2 para invitado autenticado que aún no se une a la sala */}
+          {authUser &&
+            livePlanId &&
+            !hasJoinedCurrentRoom &&
+            livePlan?.status !== 'finished' && (
+              <div
+                className="card-dark"
+                style={{ borderColor: 'rgba(204, 255, 0, 0.4)', padding: '16px' }}
+              >
+                <h4
+                  style={{ fontSize: '0.92rem', marginBottom: '8px', color: 'var(--text-white)' }}
+                >
+                  ¿Cómo quieres aparecer en la sala?
+                </h4>
+                <input
+                  type="text"
+                  className="input-dark"
+                  style={{ padding: '11px 14px', fontSize: '0.9rem', marginBottom: '10px' }}
+                  placeholder="Tu nombre o apodo"
+                  maxLength={40}
+                  value={userAlias}
+                  onChange={(e) => updateUserAlias(e.target.value)}
+                />
+                <div className="avatar-row" style={{ marginBottom: '12px' }}>
+                  {AVATAR_OPTIONS.map((av) => (
+                    <button
+                      key={av}
+                      type="button"
+                      className={`avatar-chip ${userAvatar === av ? 'selected' : ''}`}
+                      onClick={() => updateUserAvatar(av)}
+                    >
+                      {av}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  className="btn-neon"
+                  onClick={joinAsGuest}
+                  id="join-btn"
+                  disabled={joiningRoom}
+                  style={{ padding: '13px', fontSize: '0.95rem' }}
+                >
+                  {joiningRoom ? 'Conectando a sala...' : '¡Voy en camino! 🏃‍♂️'}
+                </button>
+              </div>
+            )}
+
+          {/* Pulsos Tácticos Instantáneos (cero ruido de chat) */}
+          {authUser &&
+            livePlanId &&
+            hasJoinedCurrentRoom &&
+            livePlan?.status === 'active' && (
+              <div className="card-dark" style={{ padding: '14px 16px' }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginBottom: '8px',
+                  }}
+                >
+                  <span style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--text-white)' }}>
+                    ⚡ Pulso rápido (1 toque)
+                  </span>
+                  <button
+                    type="button"
+                    className="radar-btn-sim"
+                    onClick={toggleSimulateArrival}
+                  >
+                    {isSimulatedArrival ? 'GPS Real' : 'Simular Llegada'}
+                  </button>
+                </div>
+                <div className="pulse-grid">
+                  {PULSE_OPTIONS.map((pulse) => {
+                    const isCurrent = myParticipantRecord?.quickPulse === pulse;
+                    return (
+                      <button
+                        key={pulse}
+                        type="button"
+                        className={`pulse-chip-btn ${isCurrent ? 'active' : ''}`}
+                        onClick={() => handleQuickPulse(pulse)}
+                        disabled={sendingPulse}
+                      >
+                        {pulse}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+          {/* Lista de Participantes en Tiempo Real */}
+          <div className="card-dark" style={{ padding: '16px' }}>
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: '10px',
+              }}
+            >
+              <h4
+                id="participants-title"
+                style={{ fontSize: '0.95rem', margin: 0, color: 'var(--text-white)' }}
+              >
+                En la sala ({liveParticipants.length})
+              </h4>
+              {liveParticipants.length > 0 && (
+                <span style={{ fontSize: '0.75rem', color: 'var(--accent-neon)', fontWeight: 700 }}>
+                  {arrivedCount} en el punto
+                </span>
+              )}
+            </div>
+
+            {!authUser ? (
+              <p style={{ fontSize: '0.8rem', color: 'var(--text-gray)', margin: 0 }}>
+                Conecta tu cuenta de Google para ver quién ya va en camino en tiempo real.
+              </p>
+            ) : liveParticipants.length === 0 ? (
+              <p style={{ fontSize: '0.8rem', color: 'var(--text-gray)', margin: 0 }}>
+                {livePlanId
+                  ? 'Sincronizando participantes en vivo...'
+                  : 'Crea un enlace para activar el radar multiusuario.'}
+              </p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {liveParticipants.map((p) => {
+                  const isMe = p.uid === authUser?.uid;
+                  const arrived = p.status === 'arrived';
+                  const pDist = formatDistanceETA(p.distanceMeters);
+                  return (
+                    <div key={p.uid} className={`participant-row ${isMe ? 'is-me' : ''}`}>
+                      <div style={{ minWidth: 0 }}>
+                        <div
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            fontSize: '0.86rem',
+                            color: 'var(--text-white)',
+                            fontWeight: 700,
+                          }}
+                        >
+                          <span>{p.avatar || '👤'}</span>
+                          <span
+                            style={{
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {p.name}
+                            {isMe ? ' (Tú)' : ''}
+                          </span>
+                          {p.role === 'host' && (
+                            <span
+                              style={{
+                                background: 'rgba(204,255,0,0.15)',
+                                color: 'var(--accent-neon)',
+                                padding: '2px 6px',
+                                borderRadius: '6px',
+                                fontSize: '0.68rem',
+                                fontWeight: 800,
+                              }}
+                            >
+                              Host
+                            </span>
+                          )}
+                        </div>
+                        {p.quickPulse && (
+                          <div
+                            style={{
+                              fontSize: '0.72rem',
+                              color: 'var(--text-gray)',
+                              marginTop: '2px',
+                            }}
+                          >
+                            {p.quickPulse}
+                          </div>
+                        )}
+                      </div>
+                      <span
+                        style={{
+                          fontSize: '0.78rem',
+                          fontWeight: 700,
+                          color: arrived ? '#CCFF00' : '#ff9f68',
+                          textAlign: 'right',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {arrived ? '📍 En el punto ✅' : `🚀 A ${pDist.distanceLabel}`}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           <div className="view-footer">
-            <button
-              className="btn-neon"
-              onClick={joinAsGuest}
-              id="join-btn"
-              disabled={guestJoined}
-              style={{
-                marginBottom: '10px',
-                display: isGuestMode || guestJoined ? 'block' : 'none',
-                opacity: guestJoined ? 0.7 : 1,
-              }}
-            >
-              {guestJoined ? '¡Conectado al Plan! 🚀' : '¡Voy en camino! 🏃‍♂️'}
-            </button>
-            <button
-              className="btn-neon"
-              onClick={finishPlanAndCapture}
-              style={{ backgroundColor: '#ff6b6b', color: '#fff', marginBottom: '8px' }}
-            >
-              🏁 Finalizar Encuentro & Recuerdo
-            </button>
+            {livePlan?.status === 'finished' ? (
+              <button
+                className="btn-neon"
+                onClick={() => switchView('view-memory')}
+                style={{ marginBottom: '8px' }}
+              >
+                📸 Ver & Descargar Recuerdo Colectivo
+              </button>
+            ) : (
+              (isHostOfCurrentPlan || !livePlanId) && (
+                <button
+                  className="btn-neon"
+                  onClick={finishPlanAndCapture}
+                  disabled={finishingPlan}
+                  style={{ backgroundColor: '#ff6b6b', color: '#fff', marginBottom: '8px' }}
+                >
+                  {finishingPlan ? 'Finalizando...' : '🏁 Finalizar Encuentro & Recuerdo'}
+                </button>
+              )
+            )}
             <button
               className="btn-neon"
               onClick={() => switchView('view-map')}
-              style={{ background: 'var(--card-dark)', color: 'var(--text-white)', border: '1px solid var(--card-border)' }}
+              style={{
+                background: 'var(--card-dark)',
+                color: 'var(--text-white)',
+                border: '1px solid var(--card-border)',
+              }}
             >
               Ver Mapa en Vivo
             </button>
@@ -1025,15 +2011,27 @@ export default function App() {
         {/* ========================================
              VISTA 4: RECUERDO / POSTAL & SELFIE COLECTIVA
              ======================================== */}
-        <div id="view-memory" className={`solid-view ${currentView === 'view-memory' ? 'active' : ''}`}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+        <div
+          id="view-memory"
+          className={`solid-view ${currentView === 'view-memory' ? 'active' : ''}`}
+        >
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: '12px',
+            }}
+          >
             <h3
               style={{ cursor: 'pointer', fontSize: '0.95rem', color: 'var(--text-gray)' }}
               onClick={() => switchView('view-map')}
             >
               ← Volver al Mapa
             </h3>
-            <span style={{ fontWeight: 800, color: 'var(--accent-neon)' }}>Recuerdo Colectivo 📸</span>
+            <span style={{ fontWeight: 800, color: 'var(--accent-neon)' }}>
+              Recuerdo Colectivo 📸
+            </span>
           </div>
 
           <div className="style-selector">
@@ -1093,19 +2091,50 @@ export default function App() {
             <h3 style={{ marginBottom: '4px', fontSize: '1.2rem' }} id="postal-title">
               {postalTitle}
             </h3>
-            <p style={{ fontSize: '0.8rem', color: 'var(--accent-neon)', fontWeight: 700 }} id="postal-tagline">
+            <p
+              style={{ fontSize: '0.8rem', color: 'var(--accent-neon)', fontWeight: 700 }}
+              id="postal-tagline"
+            >
               ✨ Vibe: {selectedVibeText}
             </p>
             <p style={{ fontSize: '0.75rem', color: 'var(--text-gray)', marginTop: '4px' }}>
-              Panamá · 6 de Noviembre, 2026
+              {formattedTodayDate}
             </p>
+
+            <div
+              style={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                justifyContent: 'center',
+                gap: '6px',
+                marginTop: '10px',
+              }}
+            >
+              {memoryAttendees.map((att, idx) => (
+                <span
+                  key={`${att.name}-${idx}`}
+                  style={{
+                    fontSize: '0.72rem',
+                    fontWeight: 700,
+                    padding: '4px 9px',
+                    borderRadius: '10px',
+                    background: 'rgba(255, 255, 255, 0.05)',
+                    border:
+                      att.role === 'Host'
+                        ? '1px solid rgba(204, 255, 0, 0.45)'
+                        : '1px solid rgba(255, 255, 255, 0.1)',
+                    color: att.role === 'Host' ? 'var(--accent-neon)' : 'var(--text-white)',
+                  }}
+                >
+                  {att.avatar} {att.name}
+                </span>
+              ))}
+            </div>
           </div>
 
           <div className="card-dark" style={{ padding: '12px', textAlign: 'center' }}>
             <p style={{ fontSize: '0.8rem', fontStyle: 'italic', color: 'var(--text-gray)' }} id="memory-quote">
-              {currentStyle === 'postal' && '“Un espacio libre de ruido para conectar de verdad.”'}
-              {currentStyle === 'collage' && '📸 Colección de momentos épicos en grupo.'}
-              {currentStyle === 'meme' && '🤪 Misión cumplida: Sobrevivimos al plan sin perdernos.'}
+              {getMemoryQuote()}
             </p>
           </div>
 
@@ -1128,6 +2157,9 @@ export default function App() {
             </button>
           </div>
         </div>
+
+        {/* Non-blocking Dark Pro Toast */}
+        {toastMessage && <div className="toast-banner">{toastMessage}</div>}
       </div>
     </div>
   );
