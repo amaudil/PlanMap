@@ -1,5 +1,12 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
+import {
+  getAuth,
+  getRedirectResult,
+  GoogleAuthProvider,
+  signInWithPopup,
+  signInWithRedirect,
+  signOut,
+} from 'firebase/auth';
 import { doc, getDocFromServer, getFirestore } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
@@ -7,6 +14,7 @@ const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
+googleProvider.setCustomParameters({ prompt: 'select_account' });
 
 export enum OperationType {
   CREATE = 'create',
@@ -74,10 +82,43 @@ if (typeof window !== 'undefined') {
   testConnection();
 }
 
+export function isRunningInIframe(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    return window.self !== window.top;
+  } catch {
+    return true;
+  }
+}
+
+export async function completeGoogleRedirectSignIn() {
+  try {
+    return await getRedirectResult(auth);
+  } catch (error) {
+    console.warn('Google redirect sign-in check:', error);
+    throw error;
+  }
+}
+
 export async function signInWithGoogle() {
-  return signInWithPopup(auth, googleProvider);
+  try {
+    return await signInWithPopup(auth, googleProvider);
+  } catch (error: unknown) {
+    const code = (error as { code?: string })?.code || '';
+    const isPopupBlockedOnStandaloneMobile =
+      (code === 'auth/popup-blocked' ||
+        code === 'auth/operation-not-supported-in-this-environment') &&
+      !isRunningInIframe();
+
+    if (isPopupBlockedOnStandaloneMobile) {
+      await signInWithRedirect(auth, googleProvider);
+      return null;
+    }
+    throw error;
+  }
 }
 
 export async function signOutUser() {
   return signOut(auth);
 }
+

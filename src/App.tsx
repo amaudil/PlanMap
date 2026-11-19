@@ -2,7 +2,13 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import L from 'leaflet';
 import confetti from 'canvas-confetti';
 import { onAuthStateChanged, User } from 'firebase/auth';
-import { auth, signInWithGoogle, signOutUser } from './firebase';
+import {
+  auth,
+  completeGoogleRedirectSignIn,
+  isRunningInIframe,
+  signInWithGoogle,
+  signOutUser,
+} from './firebase';
 import {
   createLivePlanRoom,
   finishLivePlan,
@@ -251,9 +257,38 @@ export default function App() {
   }, [userAlias, authUser]);
 
   // ========================================
-  // SUSCRIPCIÓN FIREBASE AUTH
+  // SUSCRIPCIÓN FIREBASE AUTH + REDIRECT MÓVIL
   // ========================================
   useEffect(() => {
+    completeGoogleRedirectSignIn()
+      .then((cred) => {
+        if (cred?.user) {
+          showToast(`Conectado como ${cred.user.displayName || 'Usuario'} ⚡`);
+          try {
+            const rawDraft = sessionStorage.getItem('planealo_pending_create_draft');
+            if (rawDraft) {
+              sessionStorage.removeItem('planealo_pending_create_draft');
+              const draft = JSON.parse(rawDraft);
+              if (draft.title) setPlanTitle(draft.title);
+              if (draft.vibe) setSelectedVibeText(draft.vibe);
+              if (typeof draft.lat === 'number' && typeof draft.lng === 'number') {
+                setTargetCoords([draft.lat, draft.lng]);
+              }
+              if (draft.placeLabel) setSelectedPlaceLabel(draft.placeLabel);
+              switchView('view-create');
+            }
+          } catch {
+            // safe fallback
+          }
+        }
+      })
+      .catch((err: unknown) => {
+        const code = (err as { code?: string })?.code || '';
+        if (code) {
+          setAuthError(`No se pudo completar el acceso con Google (${code}).`);
+        }
+      });
+
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setAuthUser(user);
       setAuthReady(true);
@@ -274,20 +309,45 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
+  const formatAuthError = (err: unknown): string => {
+    const code = (err as { code?: string })?.code || '';
+    const host = typeof window !== 'undefined' ? window.location.hostname : '';
+
+    if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') {
+      return 'Inicio de sesión cancelado. Conecta tu Google para sincronizar la sala.';
+    }
+    if (code === 'auth/popup-blocked') {
+      return isRunningInIframe()
+        ? 'Tu celular bloqueó el popup dentro de esta vista. Toca "Abrir en navegador" para iniciar con Google.'
+        : 'Tu navegador bloqueó la ventana de Google. Activa ventanas emergentes o abre en Chrome/Safari.';
+    }
+    if (code === 'auth/unauthorized-domain') {
+      return `El dominio "${host}" no está autorizado en Firebase Auth (${code}).`;
+    }
+    if (code === 'auth/operation-not-supported-in-this-environment' || code === 'auth/web-storage-unsupported') {
+      return 'Este navegador integrado (ej. WhatsApp/vista previa) restringe el login. Ábrelo en Chrome o Safari.';
+    }
+    if (code === 'auth/network-request-failed') {
+      return 'Error de conexión con Google. Verifica tu internet e intenta nuevamente.';
+    }
+    return `No se pudo iniciar sesión con Google (${code || 'error de navegador'}).`;
+  };
+
   const handleGoogleLogin = async (): Promise<User | null> => {
     setAuthBusy(true);
     setAuthError(null);
     try {
       const cred = await signInWithGoogle();
+      if (!cred) {
+        // signInWithRedirect en curso en navegador móvil
+        return null;
+      }
       showToast(`Conectado como ${cred.user.displayName || 'Usuario'} ⚡`);
       return cred.user;
     } catch (err: unknown) {
-      const code = (err as { code?: string })?.code || '';
-      if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') {
-        setAuthError('Inicio de sesión cancelado. Conecta tu Google para sincronizar la sala.');
-      } else {
-        setAuthError('No se pudo iniciar sesión con Google. Revisa si el popup fue bloqueado.');
-      }
+      const msg = formatAuthError(err);
+      setAuthError(msg);
+      showToast(msg);
       return null;
     } finally {
       setAuthBusy(false);
@@ -1038,8 +1098,27 @@ export default function App() {
 
     let activeUser = auth.currentUser;
     if (!activeUser) {
+      try {
+        sessionStorage.setItem(
+          'planealo_pending_create_draft',
+          JSON.stringify({
+            title: planTitle,
+            vibe: selectedVibeText,
+            lat: targetCoords[0],
+            lng: targetCoords[1],
+            placeLabel: selectedPlaceLabel,
+          })
+        );
+      } catch {
+        // safe fallback
+      }
       activeUser = await handleGoogleLogin();
       if (!activeUser) return;
+      try {
+        sessionStorage.removeItem('planealo_pending_create_draft');
+      } catch {
+        // safe fallback
+      }
     }
 
     const title = planTitle.trim() || 'Plan en grupo';
@@ -1930,15 +2009,45 @@ export default function App() {
           </div>
 
           {(authError || roomError) && (
-            <p style={{ color: '#ff8585', fontSize: '0.8rem', marginBottom: '10px', textAlign: 'center' }}>
-              {authError || roomError}
-            </p>
+            <div
+              className="card-dark"
+              style={{
+                borderColor: 'rgba(255, 107, 107, 0.45)',
+                background: 'rgba(255, 107, 107, 0.08)',
+                padding: '12px 14px',
+                marginBottom: '12px',
+                textAlign: 'center',
+              }}
+            >
+              <p style={{ color: '#ff9b9b', fontSize: '0.8rem', margin: 0 }}>
+                {authError || roomError}
+              </p>
+              {authError && (
+                <a
+                  href={typeof window !== 'undefined' ? window.location.href : '#'}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    display: 'inline-block',
+                    marginTop: '8px',
+                    fontSize: '0.78rem',
+                    fontWeight: 800,
+                    color: 'var(--accent-neon)',
+                    textDecoration: 'underline',
+                  }}
+                >
+                  Abrir en Safari / Chrome fuera de la vista ↗
+                </a>
+              )}
+            </div>
           )}
 
           <div className="view-footer">
             <button className="btn-neon" onClick={generateInvite} disabled={creatingPlan || authBusy}>
               {creatingPlan
                 ? 'Creando sala en vivo...'
+                : authBusy
+                ? 'Conectando con Google...'
                 : authUser
                 ? 'Armar enlace en vivo ⚡'
                 : 'Conectar con Google y armar sala ⚡'}
@@ -1997,6 +2106,23 @@ export default function App() {
               <p style={{ color: '#ff9b9b', fontSize: '0.82rem', margin: 0 }}>
                 {authError || roomError}
               </p>
+              {authError && (
+                <a
+                  href={typeof window !== 'undefined' ? window.location.href : '#'}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    display: 'inline-block',
+                    marginTop: '8px',
+                    fontSize: '0.78rem',
+                    fontWeight: 800,
+                    color: 'var(--accent-neon)',
+                    textDecoration: 'underline',
+                  }}
+                >
+                  Abrir en Safari / Chrome ↗
+                </a>
+              )}
             </div>
           )}
 
